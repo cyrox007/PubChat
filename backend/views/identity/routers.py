@@ -24,6 +24,7 @@ from components.identity.service import (
 )
 from components.moderation.account_access import account_access_projection
 from components.moderation.policy import assert_allowed
+from components.reputation.public import public_reputation_projection, self_reputation_projection
 from components.social.privacy import can_view_profile
 from database import Database
 from settings import config
@@ -50,6 +51,7 @@ async def _identity_response(db: AsyncSession, account, tokens: dict | None = No
         "status": "ok",
         **projection,
         "access_restriction": await account_access_projection(db, account.uid),
+        "reputation": await self_reputation_projection(db, account.uid),
     }
     if tokens:
         result.update(
@@ -175,6 +177,7 @@ def install(app: FastAPI):
                 detail={"error_type": "profile_not_available"},
             )
         profile = await build_public_profile(db, account, current_user["user_uid"])
+        profile["reputation"] = await public_reputation_projection(db, account.uid)
         return {"status": "ok", "profile": profile}
 
     @router.patch("/persona")
