@@ -1,0 +1,40 @@
+name: Branch dependency lock refresh
+
+on:
+  push:
+    branches:
+      - feature/full-messaging-media-calls
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/full-messaging-media-calls
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Refresh vulnerable production dependencies in lockfile
+        run: npm audit fix --package-lock-only
+      - name: Verify production audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit lockfile when changed
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Refresh vulnerable frontend dependency lock"
+          git push origin HEAD:feature/full-messaging-media-calls
