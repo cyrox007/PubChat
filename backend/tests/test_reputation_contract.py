@@ -1,4 +1,5 @@
 import asyncio
+import os
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from pydantic import ValidationError
 from components.reputation.model import AccountReputationAssessment
 from components.reputation.schemas import ReputationAIAssessment
 from components.reputation.service import ensure_space_creation_privilege
+from components.reputation.settings import load_reputation_ai_config
 
 
 class ReputationContractTests(unittest.TestCase):
@@ -21,6 +23,18 @@ class ReputationContractTests(unittest.TestCase):
         }
         self.assertEqual(targets, {"accounts.uid"})
         self.assertFalse(hasattr(AccountReputationAssessment, "persona_uid"))
+
+    def test_rollout_defaults_to_shadow_until_explicitly_required(self):
+        with patch.dict(
+            os.environ,
+            {
+                "REPUTATION_AI_PROVIDER": "disabled",
+                "REPUTATION_ENFORCEMENT_MODE": "",
+            },
+            clear=False,
+        ):
+            config = load_reputation_ai_config()
+        self.assertEqual(config.enforcement_mode, "shadow")
 
     def test_ai_assessment_is_structured_and_bounded(self):
         assessment = ReputationAIAssessment(
