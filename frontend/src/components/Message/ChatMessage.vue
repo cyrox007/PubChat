@@ -1,374 +1,66 @@
 <template>
-	<div v-if="safeMessage" :class="['message', messageType, { 'has-reply': safeMessage.reply_to }]">
-		<!-- Кнопка "ответить" -->
-		<button class="reply-button" @click="handleReply"
-			:aria-label="`Ответить на сообщение от ${safeMessage.sender.name}`">
-			<i class="fas fa-reply"></i>
-		</button>
-		<!-- Блок цитируемого сообщения -->
-		<div v-if="safeMessage.reply_to" class="reply-preview">
-			<div class="reply-header">
-				<i class="fas fa-reply"></i>
-				{{ safeMessage.reply_to.sender.name }}
-			</div>
-			<div class="reply-content">
-				{{ truncate(safeMessage.reply_to.content, 50) }}
-			</div>
-		</div>
-
-		<!-- Заголовок сообщения -->
-		<div class="message-header">
-			<img :src="apiBaseUrl + safeMessage.sender.avatar" alt="Аватар" class="avatar" />
-			<div class="user-info">
-				<strong>{{ safeMessage.sender.name }}</strong>
-				<span class="timestamp">{{ formattedTimestamp }}</span>
-			</div>
-		</div>
-
-		<!-- Тело сообщения -->
-		<div class="message-body">
-			<div v-if="safeMessage.content_type === 'text'">
-				<!-- Текст -->
-				{{ safeMessage.content }}
-			</div>
-
-			<div v-else-if="safeMessage.content_type === 'image'" class="image_list">
-				<!-- Изображение -->
-				<div class="image_item" v-for="(image, index) in safeMessage.media_metadata.files" :key="index">
-					<img :src="apiBaseUrl + image.url" alt="Изображение" class="message-image" />
-				</div>
-
-				<span v-show="safeMessage.content">{{ safeMessage.content }}</span>
-			</div>
-
-			<div v-else-if="safeMessage.content_type === 'video'">
-				<!-- Видео -->
-				<video controls class="message-video">
-					<source :src="apiBaseUrl + safeMessage.media_metadata.files[0].url" type="video/mp4">
-					Ваш браузер не поддерживает видео.
-				</video>
-			</div>
-
-			<div v-else-if="safeMessage.content_type === 'audio'">
-				<!-- Аудио -->
-				<audio controls class="message-audio">
-					<source :src="apiBaseUrl + safeMessage.content" type="audio/mpeg">
-					Ваш браузер не поддерживает аудио.
-				</audio>
-			</div>
-
-			<div v-else-if="safeMessage.content_type === 'file'" class="message-files">
-				<!-- Файлы -->
-				<!-- Проверка на null или отсутствие files -->
-				<div
-					v-if="safeMessage.media_metadata && safeMessage.media_metadata.files && safeMessage.media_metadata.files.length > 0">
-					<div v-for="(file, index) in safeMessage.media_metadata.files" :key="index" class="file-item">
-						<span v-if="isImage(file)" class="file-thumbnail">
-							<img :src="apiBaseUrl + file" alt="Thumbnail" />
-						</span>
-						<span v-else class="file-icon">
-							<i :class="getFileIcon(file.name)"></i> <!-- Значок для файлов -->
-						</span>
-						<a :href="apiBaseUrl + file.url" target="_blank" class="file-link">{{ file.name }}</a>
-					</div>
-				</div>
-				<!-- Если media_metadata отсутствует или files пустой -->
-				<div v-else class="no-files-message">
-					<i class="fas fa-exclamation-circle"></i> Нет доступных файлов
-				</div>
-			</div>
-
-			<!-- Неизвестный тип контента -->
-			<div v-else>Неизвестный тип сообщения</div>
-		</div>
-
-		<!-- Индикатор статуса -->
-		<div v-if="safeMessage.status" class="message-status">
-			<i v-if="safeMessage.status === 'sending'" class="fas fa-spinner fa-spin status-icon sending"></i>
-			<i v-else-if="safeMessage.status === 'sent'" class="fas fa-check status-icon sent"></i>
-			<i v-else-if="safeMessage.status === 'error'" class="fas fa-exclamation-circle status-icon error"></i>
-		</div>
-	</div>
-
-	<!-- Индикатор загрузки -->
-	<div v-else class="loading-message">Загрузка сообщения...</div>
+  <article v-if="safeMessage" :class="['message', messageType, { 'has-reply': safeMessage.reply_to, deleted: isDeleted }]">
+    <button v-if="!isDeleted" class="reply-button" type="button" @click="handleReply" :aria-label="`Ответить на сообщение от ${safeMessage.sender.name}`"><i class="fas fa-reply"></i></button>
+    <div v-if="safeMessage.reply_to" class="reply-preview">
+      <div class="reply-header"><i class="fas fa-reply"></i><span>{{ safeMessage.reply_to.sender.name }}</span></div>
+      <div class="reply-content">{{ truncate(safeMessage.reply_to.content, 70) }}</div>
+    </div>
+    <header class="message-header"><img :src="avatarUrl" alt="" class="avatar" /><div class="user-info"><strong>{{ safeMessage.sender.name }}</strong><time class="timestamp">{{ formattedTimestamp }}</time><span v-if="safeMessage.media_metadata?.edited_at" class="edited-label">изменено</span></div></header>
+    <div class="message-body">
+      <p v-if="isDeleted" class="deleted-copy"><i class="far fa-trash-can"></i> Сообщение удалено</p>
+      <p v-else-if="safeMessage.content && safeMessage.content_type === 'text'" class="message-text">{{ safeMessage.content }}</p>
+      <MediaMessage v-else-if="!isDeleted && mediaTypes.has(safeMessage.content_type)" :kind="safeMessage.content_type" :metadata="safeMessage.media_metadata" :content="safeMessage.content" />
+      <p v-if="!isDeleted && safeMessage.content && safeMessage.content_type !== 'text'" class="media-caption">{{ safeMessage.content }}</p>
+      <p v-if="!isDeleted && !safeMessage.content && !mediaTypes.has(safeMessage.content_type)" class="unsupported">Неподдерживаемый тип сообщения</p>
+    </div>
+    <MessageActions v-if="safeMessage.uid && !isDeleted" surface="room" :message="safeMessage" :is-own="isOwn" />
+    <div v-if="safeMessage.status" class="message-status" :aria-label="safeMessage.status"><i v-if="safeMessage.status === 'sending'" class="fas fa-spinner fa-spin"></i><i v-else-if="safeMessage.status === 'error'" class="fas fa-exclamation-circle error"></i><i v-else class="fas fa-check"></i></div>
+  </article>
+  <div v-else class="loading-message">Загрузка сообщения…</div>
 </template>
 
 <script setup>
-import { defineProps, defineEmits, computed } from 'vue';
+import { computed } from 'vue';
 import { useStore } from 'vuex';
+import MediaMessage from '@/components/Message/MediaMessage.vue';
+import MessageActions from '@/components/Message/MessageActions.vue';
 import { formatUTCDate } from '@/utils/dateFormatter';
 
-// Инициализируем хранилище
-const store = useStore();
-
 const emit = defineEmits(['reply']);
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-
-// Определяем пропсы
-const props = defineProps({
-	message: {
-		type: Object,
-		required: true,
-	},
-});
-
-const currentUser = computed(() => {
-	return store.getters.getUser || {
-		uid: null,
-		username: 'Неизвестный пользователь',
-		avatar: '/images/default-avatar.png',
-	};
-});
-
-// Проверка, является ли файл изображением
-const isImage = (fileUrl) => {
-	if (!fileUrl) return false;
-
-	// Проверяем, является ли строка Base64
-	const base64Pattern = /^data:image\/(jpeg|jpg|png|gif|webp);base64,/;
-	if (base64Pattern.test(fileUrl)) {
-		return true;
-	}
-
-	// Проверяем, является ли строка URL с расширением изображения
-	return /\.(jpeg|jpg|png|gif|webp)$/i.test(fileUrl);
-};
-
-const getFileIcon = (fileUrl) => {
-	// Проверяем расширение файла
-	const extension = fileUrl.split('.').pop().toLowerCase();
-
-	// Возвращаем соответствующий класс или путь к иконке
-	if (extension === 'pdf') {
-		return 'fas fa-file-pdf'; // Иконка PDF
-	} else if (['doc', 'docx'].includes(extension)) {
-		return 'fas fa-file-word'; // Иконка Word
-	} else if (['xls', 'xlsx'].includes(extension)) {
-		return 'fas fa-file-excel'; // Иконка Excel
-	} else if (['zip', 'rar', '7z'].includes(extension)) {
-		return 'fas fa-file-archive'; // Иконка архива
-	} else {
-		return 'fas fa-file'; // Иконка по умолчанию
-	}
-};
-
-// Создаём безопасный объект сообщения с значениями по умолчанию
+const props = defineProps({ message: { type: Object, required: true } });
+const store = useStore();
+const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const mediaTypes = new Set(['image', 'video', 'audio', 'voice', 'file']);
+const currentUser = computed(() => store.getters.getUser || {});
 const safeMessage = computed(() => {
-	if (!props.message) {
-		return null;
-	}
-
-	// Обрабатываем медиа-метаданные
-	const mediaMetadata = props.message.media_metadata || {};
-	const files = Array.isArray(mediaMetadata.files) ? mediaMetadata.files : [];
-
-	// Обрабатываем отправителя
-	const sender = props.message.sender || {};
-
-	// Обрабатываем ответ на сообщение
-	let replyTo = null;
-	if (props.message.reply_to) {
-		replyTo = {
-			uid: props.message.reply_to.uid || null,
-			content: props.message.reply_to.content || '',
-			sender: {
-				uid: props.message.reply_to.sender?.uid || null,
-				name: props.message.reply_to.sender?.name || 'Неизвестный пользователь'
-			}
-		};
-	}
-
-	return {
-		uid: props.message.uid || null,
-		frontId: props.message.frontId || props.message.tempId || null,
-		content: props.message.content || props.message.text || '', // Поддержка старого и нового формата
-		content_type: props.message.content_type || 'text',
-		media_metadata: {
-			files: files,
-		},
-		sender: {
-			uid: sender.uid || null,
-			name: sender.username || sender.name || 'Неизвестный пользователь',
-			avatar: sender.avatar || '/images/default-avatar.png',
-		},
-		room_uid: props.message.room_uid || null,
-		created_at: props.message.created_at || new Date().toISOString(),
-		status: props.message.status || 'sent',
-		reply_to: replyTo, // Добавляем информацию о цитируемом сообщении
-		type: props.message.type || 'message' // Добавляем тип сообщения
-	};
+  if (!props.message) return null;
+  const sender = props.message.sender || {};
+  const metadata = props.message.media_metadata && typeof props.message.media_metadata === 'object' ? props.message.media_metadata : {};
+  const reply = props.message.reply_to || metadata.reply_to || null;
+  return {
+    uid: props.message.uid || null,
+    frontId: props.message.frontId || props.message.tempId || null,
+    content: props.message.content ?? props.message.text ?? '',
+    content_type: props.message.content_type || 'text',
+    media_metadata: metadata,
+    sender: { uid: sender.uid || null, name: sender.username || sender.name || 'Неизвестный пользователь', avatar: sender.avatar || '/images/default-avatar.png' },
+    room_uid: props.message.room_uid || null,
+    created_at: props.message.created_at || new Date().toISOString(),
+    status: props.message.status || 'sent',
+    reply_to: reply ? { uid: reply.uid || null, content: reply.content || '', sender: { uid: reply.sender?.uid || null, name: reply.sender?.name || reply.sender?.username || 'Пользователь' } } : null,
+  };
 });
-
-// Форматируем дату для отображения
-const formattedTimestamp = computed(() => {
-	if (!safeMessage.value) return '';
-	return formatUTCDate(safeMessage.value.created_at, {
-		showSeconds: false,
-		showDate: true
-	});
-});
-
-// Вычисляем тип сообщения
-const messageType = computed(() => {
-	if (!safeMessage.value) {
-		return 'loading'; // Если сообщение еще не загружено
-	}
-
-	// Проверяем, является ли отправитель текущим пользователем
-	const isSender = safeMessage.value.sender.uid === currentUser.value.uid;
-
-	// Возвращаем комбинированный тип сообщения
-	return isSender ? `sender ${safeMessage.value.content_type}` : `other-user ${safeMessage.value.content_type}`;
-});
-
-// Добавляем обработчик ответа
-const handleReply = () => {
-	emit('reply', {
-		uid: safeMessage.value.uid,
-		content: safeMessage.value.content,
-		sender: safeMessage.value.sender
-	});
-};
-
-// Функция для сокращения текста
-const truncate = (text, length) => {
-	return text?.length > length ? text.slice(0, length) + '...' : text;
-};
+const absoluteUrl = (url) => { if (!url) return '/images/default-avatar.png'; if (/^(?:https?:|blob:|data:)/i.test(url)) return url; return `${apiBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`; };
+const avatarUrl = computed(() => absoluteUrl(safeMessage.value?.sender.avatar));
+const formattedTimestamp = computed(() => safeMessage.value ? formatUTCDate(safeMessage.value.created_at, { showSeconds:false,showDate:true }) : '');
+const isOwn = computed(() => String(safeMessage.value?.sender.uid) === String(currentUser.value?.uid));
+const isDeleted = computed(() => safeMessage.value?.content_type === 'deleted');
+const messageType = computed(() => isOwn.value ? 'sender' : 'other-user');
+const truncate = (text,length) => String(text||'').length>length ? `${String(text).slice(0,length)}…` : String(text||'');
+const handleReply = () => emit('reply',{uid:safeMessage.value.uid,content:safeMessage.value.content,sender:safeMessage.value.sender});
 </script>
 
 <style scoped>
-.message {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	max-width: 80%;
-	padding: 10px;
-	border-radius: 10px;
-	margin: 5px 0;
-	box-shadow: var(--shadow-light);
-}
-
-.message.sender {
-	background-color: var(--sent-message-bg); /* Зелёный фон для своих сообщений */
-	align-self: flex-end; /* Выравнивание по правому краю */
-	color: var(--sent-message-text);
-}
-
-.message.other-user {
-	background-color: var(--received-message-bg);
-	align-self: flex-start; /* Выравнивание по левому краю */
-}
-
-.message-header {
-	display: flex;
-	align-items: center;
-	margin-bottom: 5px;
-}
-
-.avatar {
-	width: 30px;
-	height: 30px;
-	border-radius: 50%;
-	margin-right: 10px;
-}
-
-.user-info {
-	display: flex;
-	flex-direction: column;
-}
-
-.timestamp {
-	font-size: 12px;
-	color: var(--text-light);
-}
-
-.message-body {
-	margin-top: 5px;
-}
-
-.message-image {
-	max-width: 100%;
-	border-radius: 5px;
-}
-
-.message-video,
-.message-audio {
-	max-width: 100%;
-	margin-top: 5px;
-}
-
-.loading-message {
-	background-color: var(--messenger-input-bg);
-	padding: 10px;
-	border-radius: 5px;
-	text-align: center;
-	color: #888;
-	font-style: italic;
-}
-
-/* Стили для кнопки ответа */
-.reply-button {
-	position: absolute;
-	right: 10px;
-	top: 10px;
-	background: var(--primary-color-hover);
-	border: none;
-	border-radius: 50%;
-	width: 25px;
-	height: 25px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	opacity: 0;
-	transition: opacity 0.2s;
-}
-
-.message:hover .reply-button {
-	opacity: 1;
-}
-
-/* На мобильных устройствах показываем всегда */
-@media (max-width: 768px) {
-	.reply-button {
-		opacity: 1;
-	}
-}
-
-/* Стили для цитируемого сообщения */
-.reply-preview {
-	background: rgba(0, 0, 0, 0.05);
-	border-left: 3px solid var(--primary-color);
-	padding: 5px 10px;
-	margin-bottom: 8px;
-	border-radius: 0 5px 5px 0;
-}
-
-.reply-header {
-	font-size: 0.8em;
-	color: var(--primary-color);
-	display: flex;
-	align-items: center;
-	gap: 5px;
-}
-
-.reply-content {
-	font-size: 0.9em;
-	color: var(--text-light);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-/* Дополнительный отступ для сообщений с цитатой */
-.message.has-reply {
-	padding-top: 5px;
-}
-
-.reply-time {
-	margin-left: 5px;
-	font-size: 0.8em;
-	color: #777;
-}
+.message{position:relative;width:fit-content;max-width:min(78%,680px);margin:.2rem 0;padding:.55rem .65rem .3rem;border:1px solid color-mix(in srgb,var(--ui-border) 70%,transparent);border-radius:16px;box-shadow:var(--ui-shadow-sm);text-align:left}.message.sender{align-self:flex-end;background:var(--sent-message-bg);color:var(--sent-message-text)}.message.other-user{align-self:flex-start;background:var(--received-message-bg);color:var(--received-message-text)}.message.deleted{opacity:.82}.message-header{display:flex;align-items:center;gap:.5rem;min-height:32px;padding-right:2rem;margin-bottom:.3rem}.avatar{width:32px;height:32px;flex:0 0 32px;border-radius:50%;object-fit:cover;border:1px solid var(--profile-avatar-border)}.user-info{min-width:0;display:flex;align-items:baseline;gap:.45rem;flex-wrap:wrap}.user-info strong{font-size:.88rem;line-height:1.1}.timestamp,.edited-label{color:var(--ui-text-muted);font-size:.67rem;white-space:nowrap}.edited-label{font-style:italic}.message-body{min-width:0}.message-text,.media-caption{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.38}.message-text{font-size:.94rem}.media-caption{margin-top:.4rem;font-size:.86rem}.unsupported,.deleted-copy{margin:0;color:var(--ui-text-muted);font-size:.8rem}.deleted-copy{display:flex;align-items:center;gap:.35rem;font-style:italic}.reply-button{position:absolute;top:.42rem;right:.45rem;width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:50%;background:color-mix(in srgb,var(--ui-surface) 68%,transparent);color:currentColor;cursor:pointer;opacity:0;transition:opacity var(--ui-motion-fast)}.message:hover .reply-button,.reply-button:focus-visible{opacity:1}.reply-preview{margin:-.05rem 2rem .4rem 0;padding:.35rem .5rem;border-left:3px solid var(--ui-primary);border-radius:0 8px 8px 0;background:color-mix(in srgb,var(--ui-surface) 65%,transparent)}.reply-header{display:flex;gap:.3rem;align-items:center;color:var(--ui-primary);font-size:.7rem;font-weight:700}.reply-content{margin-top:.1rem;color:var(--ui-text-muted);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.message-status{display:flex;justify-content:flex-end;height:11px;color:var(--ui-text-muted);font-size:.62rem}.message-status .error{color:var(--ui-danger)}.loading-message{padding:.5rem;color:var(--ui-text-muted);font-size:.8rem}
+@media(max-width:680px){.message{max-width:88%;margin:.1rem 0;padding:.4rem .5rem .22rem;border-radius:14px;box-shadow:none}.message-header{min-height:27px;gap:.38rem;margin-bottom:.18rem}.avatar{width:27px;height:27px;flex-basis:27px}.user-info strong{font-size:.8rem}.timestamp,.edited-label{font-size:.61rem}.message-text{font-size:.89rem;line-height:1.3}.reply-button{opacity:.68;width:27px;height:27px;top:.28rem;right:.3rem}.reply-preview{padding:.25rem .4rem;margin-bottom:.25rem}.message-status{height:9px}}
 </style>

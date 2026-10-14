@@ -1,0 +1,205 @@
+/* PubChat mobile conversation density.
+   Messaging screens are deliberately denser than discovery/profile screens so
+   the viewport is spent on conversation rather than chrome. */
+@media (max-width: 720px) {
+  :root {
+    --ui-mobile-topbar-height: 2.75rem;
+    --ui-mobile-nav-height: 3.05rem;
+  }
+
+  .app-content.container {
+    padding-inline: .55rem;
+  }
+
+  .app-topbar .topbar-inner {
+    min-height: var(--ui-mobile-topbar-height);
+    padding-inline: .55rem;
+    gap: .4rem;
+  }
+
+  .app-topbar .brand-mark {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: .55rem;
+    font-size: .95rem;
+  }
+
+  .app-topbar .topbar-actions {
+    gap: .3rem;
+  }
+
+  .app-topbar .icon-button {
+    width: 2.05rem;
+    height: 2.05rem;
+    border-radius: .65rem;
+  }
+
+  .app-topbar .persona-avatar {
+    width: 1.9rem;
+    height: 1.9rem;
+  }
+
+  .mobile-nav {
+    height: calc(var(--ui-mobile-nav-height) + env(safe-area-inset-bottom));
+    padding: .12rem .22rem env(safe-area-inset-bottom);
+  }
+
+  .mobile-nav a {
+    gap: 0;
+    font-size: .54rem;
+  }
+
+  .mobile-nav a i {
+    font-size: .9rem;
+  }
+
+  /* Spaces */
+  .space-shell {
+    height: calc(100dvh - var(--ui-mobile-topbar-height) - var(--ui-mobile-nav-height) - env(safe-area-inset-bottom));
+  }
+
+  .space-header {
+    min-height: 2.75rem;
+    grid-template-columns: 2rem minmax(0, 1fr) 2rem;
+    gap: .4rem;
+    padding: .2rem .5rem;
+  }
+
+  .space-header__icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: .65rem;
+  }
+
+  .space-header__eyebrow {
+    display: none;
+  }
+
+  .space-header h1 {
+    font-size: .94rem;
+    line-height: 1.1;
+  }
+
+  .space-header__title-row {
+    gap: .35rem;
+  }
+
+  .space-header .connection-chip {
+    min-height: 1.35rem;
+    max-width: 5.5rem;
+    padding-inline: .38rem;
+    font-size: .62rem;
+  }
+
+  .space-notice,
+  .composer-state {
+    padding: .3rem .55rem;
+    font-size: .66rem;
+  }
+
+  .message-stream {
+    padding: .35rem .45rem .3rem;
+  }
+
+  /* Messenger */
+  .dm-shell {
+    height: calc(100dvh - var(--ui-mobile-topbar-height) - var(--ui-mobile-nav-height) - env(safe-area-inset-bottom));
+    margin-inline: -.55rem;
+  }
+
+  .dm-list__header {
+    padding: .55rem .65rem .35rem;
+  }
+
+  .dm-list__header h1 {
+    font-size: 1.08rem;
+  }
+
+  .dm-eyebrow {
+    display: none;
+  }
+
+  .dm-search {
+    min-height: 2.2rem;
+    margin: 0 .5rem .45rem;
+    padding-inline: .65rem;
+  }
+
+  .conversation-list {
+    padding-inline: .3rem;
+  }
+
+  .conversation-card {
+    min-height: 3.45rem;
+    grid-template-columns: 2.25rem minmax(0,1fr) auto;
+    gap: .55rem;
+    padding: .3rem .5rem;
+    border-radius: .7rem;
+  }
+
+  .conversation-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .conversation-copy strong {
+    font-size: .84rem;
+  }
+
+  .conversation-copy small {
+    font-size: .66rem;
+  }
+
+  .dm-conversation__header {
+    min-height: 2.9rem;
+    gap: .45rem;
+    padding: .25rem .5rem;
+  }
+
+  .dm-conversation__header .back-button {
+    width: 2.05rem;
+    height: 2.05rem;
+    border-radius: .65rem;
+  }
+
+  .active-persona {
+    gap: .45rem;
+  }
+
+  .active-persona__avatar {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .active-persona__copy strong {
+    font-size: .82rem;
+    line-height: 1.05;
+  }
+
+  .active-persona__copy small {
+    font-size: .62rem;
+  }
+
+  .dm-stream {
+    padding: .35rem .45rem .3rem;
+  }
+
+  .dm-inline-notice {
+    margin: 0 .5rem .4rem;
+    padding: .35rem .5rem;
+  }
+
+  /* Avoid a second layer of breathing room around the composer. */
+  .conversation-area > .composer,
+  .dm-conversation > .composer {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .app-content.container { padding-inline: .42rem; }
+  .space-shell,
+  .dm-shell { margin-inline: -.42rem; }
+  .message-stream,
+  .dm-stream { padding-inline: .32rem; }
+}

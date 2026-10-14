@@ -1,496 +1,84 @@
 <template>
-	<div class="admin-profile">
-		<h1>Админ-панель: Редактирование профиля</h1>
+	<section class="profile-page">
+		<header class="page-header">
+			<button class="back-button" @click="router.back()"><i class="fas fa-arrow-left"></i></button>
+			<div class="identity"><div class="avatar">{{ initials }}</div><div><p class="eyebrow">Карточка пользователя</p><h1>{{ profile.username || 'Пользователь' }}</h1><p>{{ profile.email || profile.uid }}</p></div></div>
+			<button class="ui-button ui-button--secondary" :disabled="loading" @click="loadAll"><i class="fas fa-sync-alt" :class="{ spinning: loading }"></i><span>Обновить</span></button>
+		</header>
 
-		<!-- Форма отображения и редактирования данных -->
-		<div class="profile-info">
-			<div class="info-item" v-for="(field, key) in editableFields" :key="key">
-				<label :for="key">{{ field.label }}:</label>
-				<div class="info-display" v-if="!field.editing">
-					<template v-if="key === 'avatar'">
-						<img v-if="profile[key]" :src="apiBaseUrl + profile[key].url" class="avatar-preview" alt="Аватар">
-						<span v-else>Аватар не установлен</span>
-					</template>
-					<template v-else-if="key === 'rating'">
-						<span>{{ profile[key] ?? 0 }}</span>
-					</template>
-					<template v-else>
-						<span>{{ profile[key] || field.placeholder }}</span>
-					</template>
-					<button class="edit-btn" @click="startEditing(key)">
-						<i class="fas fa-pencil-alt"></i>
-					</button>
-				</div>
-				<div class="info-edit" v-else>
-					<input v-if="field.type === 'text'" :id="key" v-model="profile[key]"
-						:placeholder="field.placeholder" />
-					<textarea v-if="field.type === 'textarea'" :id="key" v-model="profile[key]"
-						:placeholder="field.placeholder"></textarea>
-					<select v-if="field.type === 'select'" :id="key" v-model="profile[key]">
-						<option v-for="option in field.options" :key="option.value" :value="option.value">
-							{{ option.label }}
-						</option>
-					</select>
-					<input v-if="field.type === 'date'" :id="key" v-model="profile[key]" type="date" />
-					<input v-if="field.type === 'file'" :id="key" type="file" @change="handleFileUpload"
-						accept="image/*" />
-					<div class="edit-actions">
-						<button class="save-btn" @click="saveField(key)">Сохранить</button>
-						<button class="cancel-btn" @click="cancelEditing(key)">Отмена</button>
-					</div>
-				</div>
+		<div v-if="error" class="error-box ui-surface"><i class="fas fa-exclamation-circle"></i><span>{{ error }}</span><button class="ui-button ui-button--secondary" @click="loadAll">Повторить</button></div>
+		<div v-else-if="loading && !profile.uid" class="loading-box"><i class="fas fa-circle-notch spinning"></i> Загружаем данные…</div>
+
+		<template v-else>
+			<div class="status-row">
+				<span class="badge" :class="profile.is_active ? 'success' : 'danger'">{{ profile.is_active ? 'Активен' : 'Отключён' }}</span>
+				<span class="badge role">{{ roleName(profile.global_role) }}</span>
+				<span class="badge" :class="profile.is_verified ? 'success' : 'muted'">{{ profile.is_verified ? 'Email подтверждён' : 'Email не подтверждён' }}</span>
+				<span v-if="profile.account" class="badge muted">Trust: {{ profile.account.trust_level || 'new' }}</span>
 			</div>
-		</div>
 
-		<!-- Дополнительная информация о пользователе -->
-		<h2>Дополнительная информация</h2>
-		<div class="additional-info">
-			<p><strong>Последний вход:</strong> {{ formatDate(profile.last_online) }}</p>
-			<p><strong>Статус верификации:</strong> {{ profile.is_verified ? 'Подтвержден' : 'Не подтвержден' }}</p>
-		</div>
+			<div class="stats-grid">
+				<div v-for="item in statCards" :key="item.label" class="stat-card ui-surface"><span>{{ item.label }}</span><strong>{{ item.value }}</strong></div>
+			</div>
 
-		<h2>Наказания пользователя</h2>
-		<div class="table-container">
-			<table class="penalties-table" v-if="penalties.length">
-				<thead>
-					<tr>
-						<th>Тип</th>
-						<th>Причина</th>
-						<th>Кем выдано</th>
-						<th>Дата назначения</th>
-						<th>Дата окончания</th>
-						<th>Действия</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr v-for="(penalty, index) in penalties" :key="index">
-						<td>{{ penalty.type }}</td>
-						<td>{{ penalty.reason }}</td>
-						<td>
-							<router-link :to="`/profile/${penalty.issuer_uid}`">
-								{{ penalty.issuer.username }}
-							</router-link>
-						</td>
-						<td>{{ formatDate(penalty.issued_at) }}</td>
-						<td>{{ formatDate(penalty.expires_at) }}</td>
-						<td class="actions">
-							<!-- <button @click="editPenaltyModal(penalty.id, penalty.reason)">Редактировать</button> -->
-							<button @click="deletePenalty(penalty.id)">Удалить</button>
-						</td>
-					</tr>
-				</tbody>
-			</table>
-			<p v-else>У пользователя нет наказаний.</p>
-		</div>
+			<div class="content-grid">
+				<section class="panel ui-surface">
+					<div class="panel-title"><div><h2>Профиль и доступ</h2><p>Основные данные и административные параметры.</p></div><button v-if="!editing" class="ui-button ui-button--secondary" @click="beginEdit"><i class="fas fa-pen"></i> Редактировать</button></div>
+					<div v-if="editing" class="edit-grid">
+						<label>Логин<input v-model="draft.username" class="ui-input"></label><label>Email<input v-model="draft.email" class="ui-input" type="email"></label><label>Телефон<input v-model="draft.phone" class="ui-input"></label><label>Роль<select v-model="draft.global_role" class="ui-input"><option value="user">Пользователь</option><option value="moderator">Модератор</option><option value="senior_moderator">Ст. модератор</option><option value="admin">Администратор</option><option value="superadmin">Супер-админ</option></select></label><label>Страна<input v-model="draft.country" class="ui-input"></label><label>Город<input v-model="draft.city" class="ui-input"></label><label class="wide">Биография<textarea v-model="draft.bio" class="ui-input"></textarea></label>
+						<div class="toggle-row wide"><label><input v-model="draft.is_active" type="checkbox"> Аккаунт активен</label><label><input v-model="draft.is_verified" type="checkbox"> Email подтверждён</label></div>
+						<div class="form-actions wide"><button class="ui-button" :disabled="saving" @click="saveProfile">Сохранить</button><button class="ui-button ui-button--secondary" @click="editing=false">Отмена</button></div>
+					</div>
+					<dl v-else class="details"><Info label="UUID" :value="profile.uid" mono/><Info label="Account UUID" :value="profile.account?.uid" mono/><Info label="Persona" :value="profile.persona?.display_name || profile.persona?.handle"/><Info label="Телефон" :value="profile.phone"/><Info label="Имя" :value="fullName"/><Info label="Локация" :value="location"/><Info label="Пол" :value="profile.gender"/><Info label="Профессия" :value="profile.career"/><Info label="Регистрация" :value="formatDateTime(profile.created_at)"/><Info label="Последняя активность" :value="formatDateTime(profile.last_online)"/><Info label="Social intent" :value="profile.persona?.social_intent"/><Info label="Account status" :value="profile.account?.status"/></dl>
+				</section>
 
-		<!-- Список комнат -->
-		<h2>Комнаты пользователя</h2>
-		<div class="table-container">
-			<table class="rooms-table" v-if="userRooms.length">
-				<thead>
-					<tr>
-						<th>Название</th>
-						<th>Описание</th>
-						<th>Регион</th>
-						<th>Страна</th>
-						<th>Теги</th>
-						<th>Дата создания</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr v-for="(room, index) in userRooms" :key="index">
-						<td>{{ room.name }}</td>
-						<td>{{ room.description || "Нет описания" }}</td>
-						<td>{{ room.region || "Не указан" }}</td>
-						<td>{{ room.country || "Не указана" }}</td>
-						<td>{{ room.tags || "Нет тегов" }}</td>
-						<td>{{ formatDate(room.created_at) }}</td>
-					</tr>
-				</tbody>
-			</table>
-			<p v-else>У пользователя нет созданных комнат.</p>
-		</div>
-	</div>
+				<section class="panel ui-surface">
+					<div class="panel-title"><div><h2>Назначить ограничение</h2><p>Создать временное наказание для пользователя.</p></div></div>
+					<div class="penalty-form"><label>Тип<select v-model="newPenalty.penalty_type" class="ui-input"><option value="mute">Mute</option><option value="ban">Ban</option></select></label><label>До<input v-model="newPenalty.expires_at" class="ui-input" type="datetime-local"></label><label class="wide">Причина<textarea v-model="newPenalty.reason" class="ui-input" placeholder="Причина ограничения"></textarea></label><button class="ui-button wide" :disabled="penaltySaving || !newPenalty.expires_at" @click="assignPenalty">Назначить</button></div>
+				</section>
+			</div>
+
+			<section class="panel ui-surface section-block">
+				<div class="panel-title"><div><h2>Наказания</h2><p>{{ penalties.length ? `Записей: ${penalties.length}` : 'Активность не зафиксирована' }}</p></div></div>
+				<div v-if="penalties.length" class="records"><article v-for="penalty in penalties" :key="penalty.id" class="record"><div><strong>{{ penalty.type }}</strong><span>{{ penalty.reason || 'Без причины' }}</span><small>{{ formatDateTime(penalty.issued_at) }} → {{ formatDateTime(penalty.expires_at) }}</small></div><button class="danger-button" @click="removePenalty(penalty.id)"><i class="fas fa-trash"></i><span>Удалить</span></button></article></div>
+				<div v-else class="empty">Наказаний за доступный период нет.</div>
+			</section>
+
+			<section class="panel ui-surface section-block">
+				<div class="panel-title"><div><h2>Созданные комнаты</h2><p>{{ rooms.length ? `Комнат: ${rooms.length}` : 'Комнат нет' }}</p></div></div>
+				<div v-if="rooms.length" class="room-grid"><article v-for="room in rooms" :key="room.uid || room.id" class="room-card"><strong>{{ room.name }}</strong><p>{{ room.description || 'Без описания' }}</p><span>{{ [room.city, room.region, room.country].filter(Boolean).join(', ') || 'Локация не указана' }}</span></article></div>
+				<div v-else class="empty">Пользователь не создавал комнаты.</div>
+			</section>
+		</template>
+	</section>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
-import { processFile } from "@/utils/fileUtils";
-import UsersServices from "@/API/UsersService";
-import ProfileService from "@/API/Admin/ProfileService"
+import { computed, defineComponent, h, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import ProfileService from '@/API/Admin/ProfileService';
 
-const route = useRoute();
-const currentUserRole = ref('admin'); // Здесь должно быть реальное значение роли текущего пользователя
-
-const penalties = ref([]);
-const newAvatar = ref(null);
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-
-// Состояния
-const profile = ref({
-	username: "",
-	email: "",
-	phone: "",
-	status: "active",
-	role: "user",
-	bio: "",
-	country: "",
-	city: "",
-	avatar: "",
-	date_of_birth: null,
-	career: null,
-	gender: null,
-	rating: 0,
-	last_online: null,
-	is_verified: false,
-});
-
-const userRooms = ref([]);
-
-// Вычисляемые свойства для ролей
-const availableRoles = computed(() => {
-	const roles = [
-		{ value: "user", label: "Пользователь" },
-		{ value: "moderator", label: "Модератор" },
-		{ value: "senior_moderator", label: "Старший модератор" },
-		{ value: "admin", label: "Администратор" },
-		{ value: "superadmin", label: "Суперадминистратор" },
-	];
-
-	// Фильтрация ролей в зависимости от прав текущего пользователя
-	if (currentUserRole.value === 'moderator') {
-		return roles.filter(r => r.value === 'user');
-	} else if (currentUserRole.value === 'admin') {
-		return roles.filter(r => ['user', 'moderator', 'senior_moderator'].includes(r.value));
-	} else if (currentUserRole.value === 'superadmin') {
-		return roles;
-	}
-	return roles.filter(r => r.value === 'user');
-});
-
-// Поля для редактирования
-const editableFields = ref({
-	username: { label: "Имя пользователя", type: "text", placeholder: "Введите имя пользователя", editing: false },
-	email: { label: "Email", type: "text", placeholder: "Введите email", editing: false },
-	phone: { label: "Телефон", type: "text", placeholder: "Введите телефон", editing: false },
-	status: {
-		label: "Статус",
-		type: "select",
-		options: [
-			{ value: "active", label: "Активен" },
-			{ value: "inactive", label: "Неактивен" },
-			{ value: "deleted", label: "Удален" },
-		],
-		editing: false,
-	},
-	role: {
-		label: "Роль",
-		type: "select",
-		options: availableRoles,
-		editing: false,
-	},
-	bio: { label: "Биография", type: "textarea", placeholder: "Введите биографию", editing: false },
-	country: { label: "Страна", type: "text", placeholder: "Введите страну", editing: false },
-	city: { label: "Город", type: "text", placeholder: "Введите город", editing: false },
-	avatar: { label: "Аватар", type: "file", editing: false },
-	date_of_birth: { label: "Дата рождения", type: "date", editing: false },
-	career: { label: "Профессия", type: "text", placeholder: "Введите профессию", editing: false },
-	gender: {
-		label: "Пол",
-		type: "select",
-		options: [
-			{ value: "male", label: "Мужской" },
-			{ value: "female", label: "Женский" },
-			{ value: "other", label: "Другой" },
-		],
-		editing: false,
-	},
-	rating: { label: "Рейтинг", type: "text", placeholder: "Введите значение рейтинга", editing: false },
-});
-
-const formatDate = (utcDateString) => {
-	if (!utcDateString) return '';
-
-	try {
-		// Нормализуем строку даты (добавляем 'Z' если нужно)
-		const normalizedDate = utcDateString.endsWith('Z') ? utcDateString : `${utcDateString}Z`;
-		const date = new Date(normalizedDate);
-
-		if (isNaN(date.getTime())) {
-			console.warn('Invalid date format:', utcDateString);
-			return '';
-		}
-
-		// Форматируем с русской локалью и нужными опциями
-		const options = {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit'
-		};
-
-		return date.toLocaleString('ru-RU', options);
-	} catch (e) {
-		console.error('Date formatting error:', e);
-		return '';
-	}
-};
-
-const handleFileUpload = async (event) => {
-	const file = event.target.files[0];
-	if (!file) return;
-
-	try {
-		// Обрабатываем файл с настройками по умолчанию
-		const { base64, meta } = await processFile(file, {
-			maxWidth: 800,
-			quality: 0.8
-		});
-
-		// Сохраняем base64 в profile.value.avatar
-		profile.value.avatar = {
-			url: `data:${meta.type};base64,${base64}`, // Base64-строка с MIME-типом
-			type: meta.type, // MIME-тип файла
-			name: meta.name, // Имя файла
-			size: meta.size, // Размер файла в байтах
-		};
-	} catch (error) {
-		console.error('Ошибка обработки файла:', error);
-		alert('Не удалось обработать файл');
-	}
-};
-
-/* const editPenalty = async (penaltyId, newReason) => {
-	try {
-		await UsersServices.updatePenalty(penaltyId, { reason: newReason });
-		alert("Наказание обновлено");
-		// Обновляем список наказаний
-		const response = await UsersServices.getUserPenalties(route.params.uid);
-		if (response.data.status === "ok") {
-			penalties.value = response.data.penalties;
-		}
-	} catch (error) {
-		console.error("Ошибка при редактировании наказания:", error);
-	}
-}; */
-
-const deletePenalty = async (penaltyId) => {
-	if (confirm("Вы уверены, что хотите удалить это наказание?")) {
-		try {
-			await ProfileService.deletePenalty(penaltyId);
-			alert("Наказание удалено");
-			// Обновляем список наказаний
-			const response = await ProfileService.getUserPenalties(route.params.uid);
-			if (response.data.status === "ok") {
-				penalties.value = response.data.penalties;
-			}
-		} catch (error) {
-			console.error("Ошибка при удалении наказания:", error);
-		}
-	}
-};
-
-// Начало редактирования поля
-const startEditing = (key) => {
-	editableFields.value[key].editing = true;
-};
-
-// Сохранение изменений в поле
-const saveField = async (key) => {
-	editableFields.value[key].editing = false;
-
-	// Отправка изменений на сервер
-	try {
-		await ProfileService.updateAdminProfile(route.params.uid, { [key]: profile.value[key] });
-		alert("Изменения сохранены");
-	} catch (error) {
-		console.error(`Ошибка при сохранении поля ${key}:`, error);
-	}
-};
-
-// Отмена редактирования
-const cancelEditing = (key) => {
-	editableFields.value[key].editing = false;
-};
-
-onMounted(async () => {
-	try {
-		// Загрузка данных пользователя
-		const response = await UsersServices.get_user_by_uid(route.params.uid);
-		if (response.data.status === "ok") {
-			profile.value = {
-				username: response.data.user.username,
-				email: response.data.user.email,
-				phone: response.data.user.phone || "",
-				status: response.data.user.status || "active",
-				role: response.data.user.global_role || "user",
-				bio: response.data.user.bio || "",
-				country: response.data.user.country || "",
-				city: response.data.user.city || "",
-				avatar: { url: response.data.user.avatar } || {},
-				date_of_birth: response.data.user.date_of_birth || null,
-				career: response.data.user.career || null,
-				gender: response.data.user.gender || null,
-				rating: response.data.user.rating || 0,
-				last_online: response.data.user.last_online || null,
-				is_verified: response.data.user.is_verified || false,
-			};
-		}
-
-		// Загрузка комнат пользователя
-		const roomsResponse = await ProfileService.getUserRooms(route.params.uid);
-		if (roomsResponse.data.status === "ok") {
-			userRooms.value = roomsResponse.data.rooms;
-		}
-	} catch (error) {
-		console.error("Ошибка при загрузке данных:", error);
-	}
-
-	try {
-		const response = await ProfileService.getUserPenalties(route.params.uid);
-		if (response.data.status === "ok") {
-			penalties.value = response.data.penalties;
-		}
-	} catch (error) {
-		console.error("Ошибка при загрузке наказаний:", error);
-	}
-});
+const Info = defineComponent({ props: { label: String, value: [String, Number], mono: Boolean }, setup(props) { return () => h('div', { class: 'detail-item' }, [h('dt', props.label), h('dd', { class: props.mono ? 'mono' : '' }, props.value || '—')]); } });
+const route = useRoute(), router = useRouter();
+const profile = ref({}), rooms = ref([]), penalties = ref([]), loading = ref(false), saving = ref(false), penaltySaving = ref(false), error = ref(''), editing = ref(false), draft = ref({});
+const newPenalty = ref({ penalty_type: 'mute', expires_at: '', reason: '' });
+const initials = computed(() => (profile.value.username || profile.value.email || '?').slice(0, 2).toUpperCase());
+const fullName = computed(() => [profile.value.first_name, profile.value.last_name].filter(Boolean).join(' ') || '—');
+const location = computed(() => [profile.value.city, profile.value.country].filter(Boolean).join(', ') || '—');
+const statCards = computed(() => [{ label: 'Сообщения', value: profile.value.stats?.messages ?? 0 }, { label: 'Личные сообщения', value: profile.value.stats?.dm_sent ?? 0 }, { label: 'Создано комнат', value: profile.value.stats?.rooms_owned ?? 0 }, { label: 'Участие в комнатах', value: profile.value.stats?.rooms_joined ?? 0 }, { label: 'Наказания', value: profile.value.stats?.penalties ?? penalties.value.length }]);
+const roleName = (role) => ({ user: 'Пользователь', moderator: 'Модератор', senior_moderator: 'Ст. модератор', admin: 'Администратор', superadmin: 'Супер-админ' }[role] || role || 'Пользователь');
+const formatDateTime = (v) => v ? new Date(v).toLocaleString('ru-RU') : '—';
+const loadAll = async () => { loading.value = true; error.value = ''; try { const [overview, roomResponse, penaltyResponse] = await Promise.all([ProfileService.getUserOverview(route.params.uid), ProfileService.getUserRooms(route.params.uid), ProfileService.getUserPenalties(route.params.uid)]); profile.value = overview.data.user || {}; rooms.value = roomResponse.data.rooms || []; penalties.value = penaltyResponse.data.penalties || []; } catch (e) { error.value = e?.response?.data?.message || 'Не удалось загрузить карточку пользователя.'; } finally { loading.value = false; } };
+const beginEdit = () => { draft.value = { username: profile.value.username || '', email: profile.value.email || '', phone: profile.value.phone || '', global_role: profile.value.global_role || 'user', country: profile.value.country || '', city: profile.value.city || '', bio: profile.value.bio || '', is_active: !!profile.value.is_active, is_verified: !!profile.value.is_verified }; editing.value = true; };
+const saveProfile = async () => { saving.value = true; try { await ProfileService.updateAdminProfile(route.params.uid, draft.value); editing.value = false; await loadAll(); } catch (e) { error.value = e?.response?.data?.message || 'Не удалось сохранить изменения.'; } finally { saving.value = false; } };
+const assignPenalty = async () => { penaltySaving.value = true; try { await ProfileService.assignPenalty({ user_uid: route.params.uid, penalty_type: newPenalty.value.penalty_type, expires_at: new Date(newPenalty.value.expires_at).toISOString(), reason: newPenalty.value.reason || null }); newPenalty.value = { penalty_type: 'mute', expires_at: '', reason: '' }; await loadAll(); } catch (e) { error.value = e?.response?.data?.message || 'Не удалось назначить ограничение.'; } finally { penaltySaving.value = false; } };
+const removePenalty = async (id) => { if (!confirm('Удалить это наказание?')) return; await ProfileService.deletePenalty(id); await loadAll(); };
+onMounted(loadAll);
 </script>
 
 <style scoped>
-.admin-profile {
-	/* max-width: 1200px; */
-	margin: 0 auto;
-	padding: 20px;
-	background: var(--bg-light);
-	box-shadow: var(--shadow-light);
-	border-radius: 8px;
-}
-
-.profile-info {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-	gap: 20px;
-	margin-top: 20px;
-}
-
-.info-item {
-	margin-bottom: 15px;
-}
-
-.info-item label {
-	display: block;
-	font-weight: bold;
-	margin-bottom: 5px;
-}
-
-.info-display {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	min-height: 40px;
-}
-
-.info-display span {
-	flex-grow: 1;
-}
-
-.avatar-preview {
-	width: 50px;
-	height: 50px;
-	border-radius: 50%;
-	object-fit: cover;
-}
-
-.edit-btn {
-	background: none;
-	border: none;
-	cursor: pointer;
-	color: var(--primary-color);
-	font-size: 16px;
-	margin-left: 10px;
-}
-
-.info-edit input,
-.info-edit textarea,
-.info-edit select {
-	width: 100%;
-	padding: 8px;
-	margin-bottom: 10px;
-	border: 1px solid var(--border-color);
-	border-radius: 4px;
-}
-
-.info-edit .edit-actions {
-	display: flex;
-	gap: 10px;
-}
-
-.save-btn,
-.cancel-btn {
-	padding: 8px 16px;
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-}
-
-.save-btn {
-	background-color: var(--primary-color);
-	color: white;
-}
-
-.cancel-btn {
-	background-color: var(--danger-color);
-	color: white;
-}
-
-.additional-info {
-	margin-top: 20px;
-}
-
-.additional-info p {
-	margin-bottom: 5px;
-}
-
-.table-container {
-	overflow-x: auto;
-}
-
-.rooms-table,
-.penalties-table {
-	width: 100%;
-	border-collapse: collapse;
-	margin-top: 20px;
-}
-
-.rooms-table th,
-.rooms-table td,
-.penalties-table th,
-.penalties-table td {
-	border: 1px solid var(--border-color);
-	padding: 8px;
-	text-align: left;
-}
-
-.rooms-table th,
-.penalties-table th {
-	background-color: var(--bg-light);
-}
-
-.actions {
-	white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-	.profile-info {
-		grid-template-columns: 1fr;
-	}
-
-	.info-edit .edit-actions {
-		flex-direction: column;
-	}
-}
+.profile-page{width:min(100%,1400px);margin:0 auto}.page-header{display:flex;align-items:center;gap:var(--ui-space-3);margin-bottom:var(--ui-space-4)}.page-header>.ui-button{margin-left:auto}.back-button{flex:0 0 42px;width:42px;height:42px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface);color:var(--ui-text)}.identity{display:flex;align-items:center;gap:var(--ui-space-3);min-width:0}.avatar{flex:0 0 52px;width:52px;height:52px;display:grid;place-items:center;border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-weight:850}.identity h1{margin:0;font-size:clamp(1.35rem,3vw,1.9rem)}.identity p{margin:2px 0 0;color:var(--ui-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.identity .eyebrow{color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.07em}.status-row{display:flex;flex-wrap:wrap;gap:var(--ui-space-2);margin-bottom:var(--ui-space-4)}.badge{padding:5px 10px;border-radius:var(--ui-radius-pill);font-size:var(--ui-text-xs);font-weight:750}.success{background:var(--ui-success-soft);color:var(--ui-success)}.danger{background:var(--ui-danger-soft);color:var(--ui-danger)}.role{background:var(--ui-primary-soft);color:var(--ui-primary)}.muted{background:var(--ui-surface-muted);color:var(--ui-text-muted)}.stats-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--ui-space-2);margin-bottom:var(--ui-space-4)}.stat-card{padding:var(--ui-space-3)}.stat-card span,.stat-card strong{display:block}.stat-card span{color:var(--ui-text-muted);font-size:var(--ui-text-xs)}.stat-card strong{margin-top:var(--ui-space-1);font-size:1.45rem}.content-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,.85fr);gap:var(--ui-space-4)}.panel{padding:var(--ui-space-4);min-width:0}.panel-title{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ui-space-3);margin-bottom:var(--ui-space-4)}.panel-title h2{margin:0;font-size:var(--ui-text-lg)}.panel-title p{margin:4px 0 0;color:var(--ui-text-muted);font-size:var(--ui-text-sm)}.details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;margin:0;background:var(--ui-border);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);overflow:hidden}.details :deep(.detail-item){min-width:0;padding:var(--ui-space-3);background:var(--ui-surface)}.details :deep(dt){color:var(--ui-text-muted);font-size:var(--ui-text-xs)}.details :deep(dd){margin:4px 0 0;overflow-wrap:anywhere}.details :deep(.mono){font-family:var(--ui-font-mono);font-size:var(--ui-text-xs)}.edit-grid,.penalty-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-3)}.edit-grid label,.penalty-form label{font-size:var(--ui-text-xs);font-weight:700;color:var(--ui-text-muted)}.edit-grid .ui-input,.penalty-form .ui-input{margin-top:var(--ui-space-1)}.wide{grid-column:1/-1}.toggle-row{display:flex;flex-wrap:wrap;gap:var(--ui-space-4);color:var(--ui-text);font-size:var(--ui-text-sm)}.form-actions{display:flex;gap:var(--ui-space-2)}.section-block{margin-top:var(--ui-space-4)}.records{display:grid;gap:var(--ui-space-2)}.record{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);padding:var(--ui-space-3);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md)}.record strong,.record span,.record small{display:block}.record span{margin-top:3px}.record small{margin-top:4px;color:var(--ui-text-muted)}.danger-button{display:flex;align-items:center;gap:var(--ui-space-2);min-height:38px;padding:0 var(--ui-space-3);border:1px solid var(--ui-danger);border-radius:var(--ui-radius-md);background:transparent;color:var(--ui-danger)}.room-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ui-space-2)}.room-card{padding:var(--ui-space-3);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface-soft)}.room-card p{margin:var(--ui-space-2) 0;color:var(--ui-text-muted);font-size:var(--ui-text-sm)}.room-card span{font-size:var(--ui-text-xs);color:var(--ui-text-muted)}.empty,.loading-box,.error-box{padding:var(--ui-space-5);color:var(--ui-text-muted);text-align:center}.error-box{display:flex;align-items:center;justify-content:center;gap:var(--ui-space-3);color:var(--ui-danger)}.spinning{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:1050px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.content-grid{grid-template-columns:1fr}.room-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.page-header>.ui-button span{display:none}.page-header>.ui-button{width:44px;padding:0}.avatar{display:none}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:var(--ui-space-3)}.details,.edit-grid,.penalty-form{grid-template-columns:1fr}.wide{grid-column:auto}.room-grid{grid-template-columns:1fr}.record{align-items:flex-start}.danger-button span{display:none}.danger-button{width:38px;padding:0;justify-content:center}.panel-title{align-items:center}.panel-title>.ui-button{padding-inline:var(--ui-space-3)}.error-box{flex-direction:column}}
+@media(max-width:390px){.stats-grid{grid-template-columns:1fr}.status-row{gap:var(--ui-space-1)}}
 </style>

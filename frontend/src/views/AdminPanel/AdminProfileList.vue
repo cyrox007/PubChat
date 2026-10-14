@@ -1,496 +1,61 @@
 <template>
-	<div class="admin-profile-list">
-		<div class="admin-toolbar">
-			<h2>Управление пользователями</h2>
+	<section class="admin-users">
+		<header class="page-header">
+			<div><p class="eyebrow">Администрирование</p><h1>Пользователи</h1><p class="subtitle">Поиск, фильтрация и управление учётными записями.</p></div>
+			<button class="ui-button ui-button--secondary refresh-button" type="button" :disabled="loading" @click="fetchUsers"><i class="fas fa-sync-alt" :class="{ spinning: loading }"></i><span>Обновить</span></button>
+		</header>
 
-			<div class="controls">
-				<div class="search-box">
-					<input v-model="searchQuery" type="text" placeholder="Поиск пользователей..."
-						@input="handleSearch" />
-					<i class="fas fa-search"></i>
-				</div>
-
-				<button class="btn-refresh" @click="fetchUsers">
-					<i class="fas fa-sync-alt"></i>
-				</button>
-			</div>
+		<div class="filters ui-surface">
+			<label class="search-field"><span>Поиск</span><div class="input-wrap"><i class="fas fa-search"></i><input v-model="searchQuery" class="ui-input" type="search" placeholder="Имя, email, телефон или UUID" @input="handleSearch" /></div></label>
+			<label><span>Роль</span><select v-model="roleFilter" class="ui-input" @change="applyFilters"><option value="">Все роли</option><option value="user">Пользователь</option><option value="moderator">Модератор</option><option value="admin">Администратор</option><option value="superadmin">Супер-админ</option></select></label>
+			<label><span>Состояние</span><select v-model="activeFilter" class="ui-input" @change="applyFilters"><option value="">Все</option><option value="true">Активные</option><option value="false">Отключённые</option></select></label>
+			<label><span>Верификация</span><select v-model="verifiedFilter" class="ui-input" @change="applyFilters"><option value="">Все</option><option value="true">Подтверждены</option><option value="false">Не подтверждены</option></select></label>
 		</div>
 
-		<div class="user-table-container">
-			<table class="user-table">
-				<thead>
-					<tr>
-						<th @click="sortBy('id')">
-							UUID
-							<i :class="sortIcon('id')"></i>
-						</th>
-						<th @click="sortBy('username')">
-							Логин
-							<i :class="sortIcon('username')"></i>
-						</th>
-						<th @click="sortBy('email')">
-							Email
-							<i :class="sortIcon('email')"></i>
-						</th>
-						<th @click="sortBy('created_at')">
-							Дата регистрации
-							<i :class="sortIcon('created_at')"></i>
-						</th>
-						<th @click="sortBy('role')">
-							Роль
-							<i :class="sortIcon('role')"></i>
-						</th>
-						<th>Действия</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr v-for="user in users" :key="user.id">
-						<td>{{ user.uid }}</td>
-						<td>{{ user.username }}</td>
-						<td>{{ user.email }}</td>
-						<td>{{ formatDate(user.created_at) }}</td>
-						<td>
-							<span :class="`role-badge ${user.role}`">
-								{{ userRoleNames[user.global_role] || user.global_role }}
-							</span>
-						</td>
-						<td class="actions">
-							<button class="btn-edit" @click="editUser(user)" title="Редактировать">
-								<i class="fas fa-edit"></i>
-							</button>
-							<!-- <button class="btn-ban" @click="toggleBanUser(user)"
-								:title="user.is_banned ? 'Разблокировать' : 'Заблокировать'">
-								<i :class="user.is_banned ? 'fas fa-unlock' : 'fas fa-ban'"></i>
-							</button> -->
-						</td>
-					</tr>
-					<tr v-if="users.length === 0">
-						<td colspan="6" class="no-results">
-							Пользователи не найдены
-						</td>
-					</tr>
-				</tbody>
-			</table>
-		</div>
+		<div v-if="error" class="state-message error-state"><i class="fas fa-exclamation-circle"></i><div><strong>Не удалось загрузить пользователей</strong><span>{{ error }}</span></div><button class="ui-button ui-button--secondary" @click="fetchUsers">Повторить</button></div>
+		<div v-else-if="loading && !users.length" class="state-message"><i class="fas fa-circle-notch spinning"></i><span>Загружаем пользователей…</span></div>
 
-		<div class="pagination-container">
-			<div class="pagination-info">
-				Показано {{ showingFrom }}-{{ showingTo }} из {{ totalUsers }}
+		<template v-else>
+			<div class="desktop-table ui-surface">
+				<table><thead><tr><th @click="sortBy('username')">Пользователь <i :class="sortIcon('username')"></i></th><th @click="sortBy('email')">Контакты <i :class="sortIcon('email')"></i></th><th @click="sortBy('global_role')">Роль <i :class="sortIcon('global_role')"></i></th><th>Состояние</th><th @click="sortBy('last_online')">Активность <i :class="sortIcon('last_online')"></i></th><th></th></tr></thead>
+				<tbody><tr v-for="user in users" :key="user.uid"><td><div class="user-cell"><div class="avatar">{{ initials(user) }}</div><div><strong>{{ user.username || 'Без имени' }}</strong><small>{{ compactUid(user.uid) }}</small></div></div></td><td><strong class="cell-main">{{ user.email || '—' }}</strong><small>{{ user.phone || locationLabel(user) }}</small></td><td><span class="badge role-badge">{{ roleName(user.global_role) }}</span></td><td><span class="badge" :class="user.is_active ? 'status-active' : 'status-disabled'">{{ user.is_active ? 'Активен' : 'Отключён' }}</span><small>{{ user.is_verified ? 'Email подтверждён' : 'Не подтверждён' }}</small></td><td><strong class="cell-main">{{ relativeDate(user.last_online) }}</strong><small>Регистрация {{ formatDate(user.created_at) }}</small></td><td><button class="icon-button" title="Открыть пользователя" @click="editUser(user)"><i class="fas fa-chevron-right"></i></button></td></tr></tbody></table>
 			</div>
-			<div class="pagination-controls">
-				<button class="pagination-btn" @click="prevPage" :disabled="currentPage === 1">
-					<i class="fas fa-chevron-left"></i>
-				</button>
 
-				<button v-for="page in visiblePages" :key="page" class="pagination-btn"
-					:class="{ active: page === currentPage }" @click="goToPage(page)">
-					{{ page }}
-				</button>
+			<div class="mobile-cards"><article v-for="user in users" :key="user.uid" class="user-card ui-surface" @click="editUser(user)"><div class="card-head"><div class="avatar">{{ initials(user) }}</div><div class="card-identity"><strong>{{ user.username || 'Без имени' }}</strong><span>{{ user.email || user.phone || compactUid(user.uid) }}</span></div><i class="fas fa-chevron-right"></i></div><div class="card-badges"><span class="badge role-badge">{{ roleName(user.global_role) }}</span><span class="badge" :class="user.is_active ? 'status-active' : 'status-disabled'">{{ user.is_active ? 'Активен' : 'Отключён' }}</span><span v-if="user.is_verified" class="badge verified">Подтверждён</span></div><dl><div><dt>Последняя активность</dt><dd>{{ relativeDate(user.last_online) }}</dd></div><div><dt>Локация</dt><dd>{{ locationLabel(user) }}</dd></div><div><dt>Регистрация</dt><dd>{{ formatDate(user.created_at) }}</dd></div></dl></article></div>
+			<div v-if="!users.length" class="empty-state ui-surface"><i class="fas fa-user-slash"></i><strong>Ничего не найдено</strong><span>Измените запрос или фильтры.</span></div>
+		</template>
 
-				<button class="pagination-btn" @click="nextPage" :disabled="currentPage === totalPages">
-					<i class="fas fa-chevron-right"></i>
-				</button>
-			</div>
-			<div class="page-size-selector">
-				<select v-model="perPage" @change="handlePageSizeChange">
-					<option value="10">10 на странице</option>
-					<option value="25">25 на странице</option>
-					<option value="50">50 на странице</option>
-					<option value="100">100 на странице</option>
-				</select>
-			</div>
-		</div>
-
-		<!-- Модальное окно редактирования -->
-		<!-- <UserEditModal v-if="editingUser" :user="editingUser" @close="closeEditModal" @save="saveUserChanges" /> -->
-	</div>
+		<footer v-if="totalUsers" class="pagination"><span>{{ showingFrom }}–{{ showingTo }} из {{ totalUsers }}</span><div class="pagination-controls"><button class="page-button" :disabled="currentPage === 1" @click="prevPage"><i class="fas fa-chevron-left"></i></button><span>Страница {{ currentPage }} из {{ totalPages }}</span><button class="page-button" :disabled="currentPage >= totalPages" @click="nextPage"><i class="fas fa-chevron-right"></i></button></div><select v-model.number="perPage" class="page-size" @change="handlePageSizeChange"><option :value="10">10</option><option :value="25">25</option><option :value="50">50</option></select></footer>
+	</section>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useStore } from 'vuex';
-
+import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import ProfileService from '@/API/Admin/ProfileService';
-import router from '@/router';
-
-const store = useStore();
-
-// Состояния
-const users = ref([]);
-const searchQuery = ref('');
-const currentPage = ref(1);
-const perPage = ref(10);
-const totalUsers = ref(0);
-const sortField = ref('created_at');
-const sortDirection = ref('desc');
-const editingUser = ref(null);
-
-// Названия ролей для отображения
-const userRoleNames = {
-	user: 'Пользователь',
-	moderator: 'Модератор',
-	admin: 'Администратор',
-	superadmin: 'Супер-админ'
-};
-
-// Получение данных
-const fetchUsers = async () => {
-	try {
-		const params = {
-			page: currentPage.value,
-			per_page: perPage.value,
-			search: searchQuery.value,
-			sort_by: sortField.value,
-			sort_dir: sortDirection.value
-		};
-
-		const response = await ProfileService.getUsers(params);
-		users.value = response.data;
-		totalUsers.value = response.total;
-	} catch (error) {
-		console.error('Ошибка загрузки пользователей:', error);
-		alert('Не удалось загрузить список пользователей');
-	}
-};
-
-// Поиск с задержкой
-let searchTimeout = null;
-const handleSearch = () => {
-	clearTimeout(searchTimeout);
-	searchTimeout = setTimeout(() => {
-		currentPage.value = 1;
-		fetchUsers();
-	}, 500);
-};
-
-// Сортировка
-const sortBy = (field) => {
-	if (sortField.value === field) {
-		sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
-	} else {
-		sortField.value = field;
-		sortDirection.value = 'asc';
-	}
-	fetchUsers();
-};
-
-const sortIcon = (field) => {
-	if (sortField.value !== field) return 'fas fa-sort';
-	return sortDirection.value === 'asc'
-		? 'fas fa-sort-up'
-		: 'fas fa-sort-down';
-};
-
-// Пагинация
-const totalPages = computed(() => Math.ceil(totalUsers.value / perPage.value));
-const showingFrom = computed(() => (currentPage.value - 1) * perPage.value + 1);
-const showingTo = computed(() => Math.min(currentPage.value * perPage.value, totalUsers.value));
-
-const visiblePages = computed(() => {
-	const pages = [];
-	const maxVisible = 5;
-	let start = Math.max(1, currentPage.value - Math.floor(maxVisible / 2));
-	let end = Math.min(totalPages.value, start + maxVisible - 1);
-
-	if (end - start + 1 < maxVisible) {
-		start = Math.max(1, end - maxVisible + 1);
-	}
-
-	for (let i = start; i <= end; i++) {
-		pages.push(i);
-	}
-
-	return pages;
-});
-
-const goToPage = (page) => {
-	if (page !== currentPage.value) {
-		currentPage.value = page;
-		fetchUsers();
-	}
-};
-
-const prevPage = () => {
-	if (currentPage.value > 1) {
-		currentPage.value--;
-		fetchUsers();
-	}
-};
-
-const nextPage = () => {
-	if (currentPage.value < totalPages.value) {
-		currentPage.value++;
-		fetchUsers();
-	}
-};
-
-const handlePageSizeChange = () => {
-	currentPage.value = 1;
-	fetchUsers();
-};
-
-// Форматирование даты
-const formatDate = (dateString) => {
-	return new Date(dateString).toLocaleDateString('ru-RU', {
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric'
-	});
-};
-
-// Работа с пользователями
-const editUser = (user) => {
-	router.push(`/admin/profile/${user.uid}`)
-};
-
-const closeEditModal = () => {
-	editingUser.value = null;
-};
-
-/* const saveUserChanges = async (updatedUser) => {
-	try {
-		await store.dispatch('admin/updateUser', updatedUser);
-		fetchUsers();
-		closeEditModal();
-	} catch (error) {
-		console.error('Ошибка обновления пользователя:', error);
-		alert('Не удалось обновить данные пользователя');
-	}
-}; */
-
-const toggleBanUser = async (user) => {
-	if (confirm(`Вы уверены, что хотите ${user.is_banned ? 'разблокировать' : 'заблокировать'} пользователя ${user.username}?`)) {
-		try {
-			await store.dispatch('admin/toggleBanUser', user.id);
-			fetchUsers();
-		} catch (error) {
-			console.error('Ошибка блокировки пользователя:', error);
-			alert('Не удалось изменить статус блокировки');
-		}
-	}
-};
-
-// Инициализация
-onMounted(() => {
-	fetchUsers();
-});
+const router = useRouter();
+const users = ref([]), loading = ref(false), error = ref(''), searchQuery = ref(''), roleFilter = ref(''), activeFilter = ref(''), verifiedFilter = ref('');
+const currentPage = ref(1), perPage = ref(10), totalUsers = ref(0), sortField = ref('created_at'), sortDirection = ref('desc');
+let searchTimeout;
+const toOptionalBoolean = (value) => value === '' ? undefined : value === 'true';
+const fetchUsers = async () => { loading.value = true; error.value = ''; try { const response = await ProfileService.getUsers({ page: currentPage.value, per_page: perPage.value, search: searchQuery.value || undefined, sort_by: sortField.value, sort_dir: sortDirection.value, role_filter: roleFilter.value || undefined, is_active: toOptionalBoolean(activeFilter.value), is_verified: toOptionalBoolean(verifiedFilter.value) }); users.value = response.data; totalUsers.value = response.total; } catch (e) { error.value = e?.response?.data?.message || 'Проверьте соединение и повторите попытку.'; } finally { loading.value = false; } };
+const handleSearch = () => { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => { currentPage.value = 1; fetchUsers(); }, 350); };
+const applyFilters = () => { currentPage.value = 1; fetchUsers(); };
+const sortBy = (field) => { sortDirection.value = sortField.value === field && sortDirection.value === 'asc' ? 'desc' : 'asc'; sortField.value = field; fetchUsers(); };
+const sortIcon = (field) => sortField.value === field ? (sortDirection.value === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort';
+const totalPages = computed(() => Math.max(1, Math.ceil(totalUsers.value / perPage.value)));
+const showingFrom = computed(() => totalUsers.value ? (currentPage.value - 1) * perPage.value + 1 : 0), showingTo = computed(() => Math.min(currentPage.value * perPage.value, totalUsers.value));
+const prevPage = () => { if (currentPage.value > 1) { currentPage.value--; fetchUsers(); } }, nextPage = () => { if (currentPage.value < totalPages.value) { currentPage.value++; fetchUsers(); } }, handlePageSizeChange = () => { currentPage.value = 1; fetchUsers(); };
+const editUser = (user) => router.push(`/admin/profile/${user.uid}`);
+const roleName = (role) => ({ user: 'Пользователь', moderator: 'Модератор', senior_moderator: 'Ст. модератор', admin: 'Администратор', superadmin: 'Супер-админ' }[role] || role || 'Пользователь');
+const compactUid = (uid) => uid ? `${uid.slice(0, 8)}…${uid.slice(-4)}` : '—', initials = (user) => (user.username || user.email || '?').slice(0, 2).toUpperCase(), locationLabel = (user) => [user.city, user.country].filter(Boolean).join(', ') || 'Не указана', formatDate = (value) => value ? new Date(value).toLocaleDateString('ru-RU') : '—';
+const relativeDate = (value) => { if (!value) return 'Нет данных'; const diff = Date.now() - new Date(value).getTime(); if (diff < 60000) return 'Только что'; if (diff < 3600000) return `${Math.floor(diff / 60000)} мин. назад`; if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч. назад`; return formatDate(value); };
+onMounted(fetchUsers);
 </script>
 
 <style scoped>
-.admin-profile-list {
-	padding: 20px;
-	background-color: var(--bg-light);
-	border-radius: 8px;
-	box-shadow: var(--shadow-light);
-}
-
-.admin-toolbar {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 20px;
-	flex-wrap: wrap;
-	gap: 15px;
-}
-
-.controls {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.search-box {
-	position: relative;
-}
-
-.search-box input {
-	padding: 8px 30px 8px 10px;
-	border: 1px solid var(--messenger-border);
-	border-radius: 4px;
-	width: 250px;
-}
-
-.search-box i {
-	position: absolute;
-	right: 10px;
-	top: 50%;
-	transform: translateY(-50%);
-	color: var(--primary-color);
-}
-
-.btn-refresh {
-	background: none;
-	border: none;
-	cursor: pointer;
-	color: var(--primary-color);
-	font-size: 16px;
-	padding: 5px;
-}
-
-.user-table-container {
-	overflow-x: auto;
-	margin-bottom: 20px;
-}
-
-.user-table {
-	width: 100%;
-	border-collapse: collapse;
-	background-color: var(--bg-light);
-}
-
-.user-table th,
-.user-table td {
-	padding: 12px 15px;
-	text-align: left;
-	border-bottom: 1px solid var(--messenger-border);
-}
-
-.user-table th {
-	background-color: var(--sidebar-bg-light);
-	font-weight: 600;
-	cursor: pointer;
-	user-select: none;
-}
-
-.user-table th:hover {
-	background-color: var(--primary-color-hover);
-	color: white;
-}
-
-.user-table tr:hover td {
-	background-color: rgba(var(--primary-color-rgb), 0.1);
-}
-
-.role-badge {
-	display: inline-block;
-	padding: 3px 8px;
-	border-radius: 12px;
-	font-size: 12px;
-	font-weight: 500;
-}
-
-.role-badge.user {
-	background-color: #e1f5fe;
-	color: #0288d1;
-}
-
-.role-badge.moderator {
-	background-color: #e8f5e9;
-	color: #388e3c;
-}
-
-.role-badge.admin {
-	background-color: #f3e5f5;
-	color: #8e24aa;
-}
-
-.role-badge.superadmin {
-	background-color: #fff3e0;
-	color: #e65100;
-}
-
-.actions {
-	display: flex;
-	gap: 5px;
-}
-
-.btn-edit,
-.btn-ban {
-	background: none;
-	border: none;
-	cursor: pointer;
-	padding: 5px;
-	border-radius: 4px;
-}
-
-.btn-edit {
-	color: var(--primary-color);
-}
-
-.btn-edit:hover {
-	background-color: rgba(var(--primary-color-rgb), 0.1);
-}
-
-.btn-ban {
-	color: #f44336;
-}
-
-.btn-ban:hover {
-	background-color: rgba(244, 67, 54, 0.1);
-}
-
-.no-results {
-	text-align: center;
-	padding: 20px;
-	color: #666;
-}
-
-.pagination-container {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 15px;
-	margin-top: 20px;
-}
-
-.pagination-controls {
-	display: flex;
-	gap: 5px;
-}
-
-.pagination-btn {
-	padding: 5px 10px;
-	border: 1px solid var(--messenger-border);
-	background: none;
-	cursor: pointer;
-	border-radius: 4px;
-	min-width: 32px;
-}
-
-.pagination-btn:hover:not(:disabled) {
-	background-color: var(--primary-color-hover);
-	color: white;
-}
-
-.pagination-btn.active {
-	background-color: var(--primary-color);
-	color: white;
-	border-color: var(--primary-color);
-}
-
-.pagination-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.page-size-selector select {
-	padding: 5px;
-	border: 1px solid var(--messenger-border);
-	border-radius: 4px;
-	background-color: var(--bg-light);
-	color: var(--text-light);
-}
-
-@media (max-width: 768px) {
-	.admin-toolbar {
-		flex-direction: column;
-		align-items: flex-start;
-	}
-
-	.search-box input {
-		width: 100%;
-	}
-
-	.pagination-container {
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.user-table th,
-	.user-table td {
-		padding: 8px 10px;
-		font-size: 14px;
-	}
-}
+.admin-users{width:min(100%,1500px);margin:0 auto}.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ui-space-4);margin-bottom:var(--ui-space-5)}h1{margin:0;font-size:clamp(1.55rem,3vw,2rem);line-height:1.15}.eyebrow{margin:0 0 var(--ui-space-1);color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.08em}.subtitle{margin:var(--ui-space-2) 0 0;color:var(--ui-text-muted)}.filters{display:grid;grid-template-columns:minmax(260px,1.7fr) repeat(3,minmax(150px,.65fr));gap:var(--ui-space-3);padding:var(--ui-space-4);margin-bottom:var(--ui-space-4)}.filters label>span{display:block;margin-bottom:var(--ui-space-1);color:var(--ui-text-muted);font-size:var(--ui-text-xs);font-weight:700}.input-wrap{position:relative}.input-wrap i{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--ui-text-subtle)}.input-wrap input{padding-left:38px}.desktop-table{overflow:hidden}table{width:100%;border-collapse:collapse}th,td{padding:var(--ui-space-3) var(--ui-space-4);text-align:left;border-bottom:1px solid var(--ui-border);vertical-align:middle}th{color:var(--ui-text-muted);background:var(--ui-surface-soft);font-size:var(--ui-text-xs);font-weight:750;cursor:pointer;white-space:nowrap}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:var(--ui-surface-soft)}.user-cell,.card-head{display:flex;align-items:center;gap:var(--ui-space-3)}.avatar{flex:0 0 38px;width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800}.user-cell strong,.user-cell small,td small{display:block}.user-cell small,td small{margin-top:2px;color:var(--ui-text-muted);font-size:var(--ui-text-xs)}.cell-main{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.badge{display:inline-flex;align-items:center;width:fit-content;min-height:27px;padding:2px 9px;border-radius:var(--ui-radius-pill);font-size:var(--ui-text-xs);font-weight:750}.role-badge{background:var(--ui-primary-soft);color:var(--ui-primary)}.status-active,.verified{background:var(--ui-success-soft);color:var(--ui-success)}.status-disabled{background:var(--ui-danger-soft);color:var(--ui-danger)}.icon-button,.page-button{border:1px solid var(--ui-border);background:var(--ui-surface);color:var(--ui-text);border-radius:var(--ui-radius-md);cursor:pointer}.icon-button{width:38px;height:38px}.page-button{min-width:38px;height:38px}.page-button:disabled{opacity:.4;cursor:default}.mobile-cards{display:none}.state-message,.empty-state{min-height:150px;display:flex;align-items:center;justify-content:center;gap:var(--ui-space-3);padding:var(--ui-space-5);color:var(--ui-text-muted);text-align:center}.state-message div strong,.state-message div span,.empty-state strong,.empty-state span{display:block}.error-state{color:var(--ui-danger)}.empty-state{flex-direction:column}.pagination{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);margin-top:var(--ui-space-4);color:var(--ui-text-muted);font-size:var(--ui-text-sm)}.pagination-controls{display:flex;align-items:center;gap:var(--ui-space-2)}.page-size{min-height:38px;padding:0 var(--ui-space-2);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface);color:var(--ui-text)}.spinning{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:1100px){.filters{grid-template-columns:1fr 1fr}.desktop-table{overflow-x:auto}table{min-width:900px}}
+@media(max-width:700px){.page-header{align-items:center}.subtitle{font-size:var(--ui-text-sm)}.refresh-button span{display:none}.refresh-button{width:44px;padding:0}.filters{grid-template-columns:1fr 1fr;padding:var(--ui-space-3)}.search-field{grid-column:1/-1}.desktop-table{display:none}.mobile-cards{display:grid;gap:var(--ui-space-2)}.user-card{padding:var(--ui-space-3);cursor:pointer}.card-head>i{margin-left:auto;color:var(--ui-text-subtle)}.card-identity{min-width:0}.card-identity strong,.card-identity span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card-identity span{margin-top:2px;color:var(--ui-text-muted);font-size:var(--ui-text-xs)}.card-badges{display:flex;flex-wrap:wrap;gap:var(--ui-space-1);margin:var(--ui-space-3) 0}.user-card dl{display:grid;grid-template-columns:1fr 1fr;gap:var(--ui-space-2);margin:0}.user-card dl div{min-width:0;padding:var(--ui-space-2);border-radius:var(--ui-radius-sm);background:var(--ui-surface-soft)}.user-card dt{color:var(--ui-text-muted);font-size:.68rem}.user-card dd{margin:2px 0 0;font-size:var(--ui-text-sm);overflow-wrap:anywhere}.pagination{flex-wrap:wrap}.pagination-controls{order:3;width:100%;justify-content:space-between}}
+@media(max-width:430px){.filters{grid-template-columns:1fr}.search-field{grid-column:auto}.user-card dl{grid-template-columns:1fr}}
 </style>

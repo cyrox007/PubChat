@@ -17,6 +17,8 @@ config.set_main_option('sqlalchemy.url', cfg.alembic_database_url())
 from components.user.model import User, Penalty, UserRelationship
 from components.room.model import Room, RoomMember, RoomBan
 from components.message.model import Message, PrivateMessage
+from components.message.reaction_model import MessageReaction
+from components.transcription.model import MediaTranscriptionJob
 from components.device.model import UserDevice
 from components.identity.model import (
     Account,
