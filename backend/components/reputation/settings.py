@@ -25,9 +25,11 @@ class ReputationAIConfig:
 
 def load_reputation_ai_config() -> ReputationAIConfig:
     provider = os.getenv("REPUTATION_AI_PROVIDER", "disabled").strip().lower() or "disabled"
-    enforcement_mode = os.getenv("REPUTATION_ENFORCEMENT_MODE", "required").strip().lower() or "required"
+    # New/unknown deployments must observe first, never fail-close by accident.
+    # `required` is an explicit operational switch after provider calibration.
+    enforcement_mode = os.getenv("REPUTATION_ENFORCEMENT_MODE", "shadow").strip().lower() or "shadow"
     if enforcement_mode not in {"required", "shadow"}:
-        enforcement_mode = "required"
+        enforcement_mode = "shadow"
     return ReputationAIConfig(
         provider=provider,
         endpoint=os.getenv("REPUTATION_AI_ENDPOINT", "").strip(),
