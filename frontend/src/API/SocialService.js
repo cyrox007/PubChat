@@ -5,6 +5,18 @@ export default class SocialService {
 		return $api.get('/social/v1/discover', { params });
 	}
 
+	static availability() {
+		return $api.get('/social/v1/availability/me');
+	}
+
+	static setAvailability(payload) {
+		return $api.put('/social/v1/availability/me', payload);
+	}
+
+	static clearAvailability() {
+		return $api.delete('/social/v1/availability/me');
+	}
+
 	static relationship(accountUid) {
 		return $api.get(`/social/v1/relationships/${accountUid}`);
 	}
