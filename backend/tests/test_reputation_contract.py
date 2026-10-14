@@ -61,7 +61,7 @@ class ReputationContractTests(unittest.TestCase):
                 max_owned_active_spaces=1,
             )
 
-    def test_ineligible_assessment_denies_space_creation(self):
+    def test_ineligible_assessment_denies_space_creation_in_required_mode(self):
         account_uid = uuid4()
         account = SimpleNamespace(uid=account_uid, legacy_user_uid=uuid4())
         assessment = SimpleNamespace(
@@ -72,9 +72,15 @@ class ReputationContractTests(unittest.TestCase):
         )
         db = MagicMock()
 
-        with patch(
-            "components.reputation.service.get_current_reputation_assessment",
-            new=AsyncMock(return_value=assessment),
+        with (
+            patch(
+                "components.reputation.service.get_current_reputation_assessment",
+                new=AsyncMock(return_value=assessment),
+            ),
+            patch(
+                "components.reputation.service.reputation_ai_config",
+                SimpleNamespace(enforcement_mode="required"),
+            ),
         ):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(ensure_space_creation_privilege(db, account))
@@ -85,7 +91,7 @@ class ReputationContractTests(unittest.TestCase):
             "space_creation_privilege_required",
         )
 
-    def test_eligible_assessment_enforces_owned_space_limit(self):
+    def test_eligible_assessment_enforces_owned_space_limit_in_required_mode(self):
         account_uid = uuid4()
         account = SimpleNamespace(uid=account_uid, legacy_user_uid=uuid4())
         assessment = SimpleNamespace(
@@ -99,9 +105,15 @@ class ReputationContractTests(unittest.TestCase):
         db = MagicMock()
         db.execute = AsyncMock(return_value=scalar_result)
 
-        with patch(
-            "components.reputation.service.get_current_reputation_assessment",
-            new=AsyncMock(return_value=assessment),
+        with (
+            patch(
+                "components.reputation.service.get_current_reputation_assessment",
+                new=AsyncMock(return_value=assessment),
+            ),
+            patch(
+                "components.reputation.service.reputation_ai_config",
+                SimpleNamespace(enforcement_mode="required"),
+            ),
         ):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(ensure_space_creation_privilege(db, account))
@@ -112,7 +124,7 @@ class ReputationContractTests(unittest.TestCase):
             "space_creation_limit_reached",
         )
 
-    def test_eligible_assessment_under_limit_allows_creation(self):
+    def test_eligible_assessment_under_limit_allows_creation_in_required_mode(self):
         account_uid = uuid4()
         account = SimpleNamespace(uid=account_uid, legacy_user_uid=uuid4())
         assessment = SimpleNamespace(
@@ -126,13 +138,44 @@ class ReputationContractTests(unittest.TestCase):
         db = MagicMock()
         db.execute = AsyncMock(return_value=scalar_result)
 
-        with patch(
-            "components.reputation.service.get_current_reputation_assessment",
-            new=AsyncMock(return_value=assessment),
+        with (
+            patch(
+                "components.reputation.service.get_current_reputation_assessment",
+                new=AsyncMock(return_value=assessment),
+            ),
+            patch(
+                "components.reputation.service.reputation_ai_config",
+                SimpleNamespace(enforcement_mode="required"),
+            ),
         ):
             result = asyncio.run(ensure_space_creation_privilege(db, account))
 
         self.assertIs(result, assessment)
+
+    def test_shadow_mode_observes_assessment_without_enforcing_it(self):
+        account = SimpleNamespace(uid=uuid4(), legacy_user_uid=uuid4())
+        assessment = SimpleNamespace(
+            space_creation_eligible=False,
+            overall_label="developing",
+            valid_until=datetime.utcnow() + timedelta(hours=1),
+            max_owned_active_spaces=0,
+        )
+        db = MagicMock()
+
+        with (
+            patch(
+                "components.reputation.service.get_current_reputation_assessment",
+                new=AsyncMock(return_value=assessment),
+            ),
+            patch(
+                "components.reputation.service.reputation_ai_config",
+                SimpleNamespace(enforcement_mode="shadow"),
+            ),
+        ):
+            result = asyncio.run(ensure_space_creation_privilege(db, account))
+
+        self.assertIs(result, assessment)
+        db.execute.assert_not_called()
 
 
 if __name__ == "__main__":
