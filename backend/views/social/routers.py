@@ -6,6 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
 from components.identity.schemas import SocialIntent
+from components.social.availability import (
+    SocialAvailabilityRequest,
+    clear_social_availability,
+    get_social_availability,
+    set_social_availability,
+)
 from components.social.discovery import discover_people
 from components.social.schemas import FriendActionRequest, RequestDirection
 from components.social.service import (
@@ -28,6 +34,7 @@ def install(app: FastAPI) -> None:
     async def discover(
         q: Optional[str] = Query(default=None, max_length=80),
         social_intent: Optional[SocialIntent] = None,
+        available_now: bool = Query(default=False),
         limit: int = Query(default=30, ge=1, le=50),
         offset: int = Query(default=0, ge=0),
         current_user: dict = Depends(auth_middle),
@@ -38,6 +45,7 @@ def install(app: FastAPI) -> None:
             viewer_uid=current_user["user_uid"],
             query=q,
             social_intent=social_intent,
+            available_now=available_now,
             limit=limit,
             offset=offset,
         )
@@ -46,6 +54,33 @@ def install(app: FastAPI) -> None:
             "people": people,
             "pagination": {"limit": limit, "offset": offset, "count": len(people), "total": total},
         }
+
+    @router.get("/availability/me")
+    async def my_availability(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        return {
+            "status": "ok",
+            "availability": await get_social_availability(db, current_user["user_uid"]),
+        }
+
+    @router.put("/availability/me")
+    async def update_my_availability(
+        payload: SocialAvailabilityRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        availability = await set_social_availability(db, current_user["user_uid"], payload)
+        return {"status": "ok", "availability": availability}
+
+    @router.delete("/availability/me")
+    async def delete_my_availability(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        await clear_social_availability(db, current_user["user_uid"])
+        return {"status": "ok", "availability": None}
 
     @router.get("/relationships/{account_uid}")
     async def relationship(
