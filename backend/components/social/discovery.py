@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from components.identity.model import Account, AccountRelationship, Persona, PrivacySettings
+from components.social.availability_model import PersonaSocialAvailability
 from components.social.service import (
     RELATION_FOLLOW,
     RELATION_FRIEND,
@@ -20,10 +22,12 @@ async def discover_people(
     viewer_uid: UUID | str,
     query: str | None = None,
     social_intent: str | None = None,
+    available_now: bool = False,
     limit: int = 30,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
     viewer = await _active_account(db, viewer_uid)
+    now = datetime.utcnow()
 
     viewer_membership = aliased(SpaceMembership)
     candidate_membership = aliased(SpaceMembership)
@@ -63,6 +67,7 @@ async def discover_people(
     )
 
     visibility = func.coalesce(PrivacySettings.profile_visibility, "public")
+    availability_active = PersonaSocialAvailability.expires_at > now
     base_filters = [
         Persona.is_primary.is_(True),
         Persona.account_uid != viewer.uid,
@@ -86,27 +91,50 @@ async def discover_people(
             )
         )
     if social_intent:
-        base_filters.append(Persona.social_intent == social_intent)
+        base_filters.append(
+            or_(
+                Persona.social_intent == social_intent,
+                and_(
+                    availability_active,
+                    PersonaSocialAvailability.intent == social_intent,
+                ),
+            )
+        )
+    if available_now:
+        base_filters.append(availability_active)
 
     stmt = (
-        select(Persona, PrivacySettings)
+        select(Persona, PrivacySettings, PersonaSocialAvailability)
         .join(Account, Account.uid == Persona.account_uid)
         .outerjoin(PrivacySettings, PrivacySettings.persona_uid == Persona.uid)
+        .outerjoin(
+            PersonaSocialAvailability,
+            PersonaSocialAvailability.persona_uid == Persona.uid,
+        )
         .where(*base_filters)
-        .order_by(Persona.updated_at.desc(), Persona.created_at.desc())
+        .order_by(
+            availability_active.desc().nullslast(),
+            PersonaSocialAvailability.updated_at.desc().nullslast(),
+            Persona.updated_at.desc(),
+            Persona.created_at.desc(),
+        )
     )
 
     total_result = await db.execute(
         select(func.count(Persona.uid))
         .join(Account, Account.uid == Persona.account_uid)
         .outerjoin(PrivacySettings, PrivacySettings.persona_uid == Persona.uid)
+        .outerjoin(
+            PersonaSocialAvailability,
+            PersonaSocialAvailability.persona_uid == Persona.uid,
+        )
         .where(*base_filters)
     )
     total = int(total_result.scalar_one() or 0)
 
     result = await db.execute(stmt.limit(limit).offset(offset))
     rows = result.all()
-    account_uids = [persona.account_uid for persona, _ in rows]
+    account_uids = [persona.account_uid for persona, _, _ in rows]
 
     relations_by_target: dict[UUID, set[tuple[UUID, UUID, str]]] = defaultdict(set)
     if account_uids:
@@ -138,7 +166,7 @@ async def discover_people(
             relations_by_target[target_uid].add((from_uid, to_uid, relation_type))
 
     people = []
-    for persona, privacy in rows:
+    for persona, privacy, availability in rows:
         target_uid = persona.account_uid
         relations = relations_by_target.get(target_uid, set())
         following = (viewer.uid, target_uid, RELATION_FOLLOW) in relations
@@ -150,6 +178,13 @@ async def discover_people(
         outgoing_request = (viewer.uid, target_uid, RELATION_FRIEND_REQUEST) in relations
         incoming_request = (target_uid, viewer.uid, RELATION_FRIEND_REQUEST) in relations
         show_location = bool(privacy and privacy.show_location)
+        active_availability = None
+        if availability and availability.expires_at > now:
+            active_availability = {
+                "intent": availability.intent,
+                "note": availability.note,
+                "expires_at": availability.expires_at.isoformat(),
+            }
 
         people.append(
             {
@@ -162,6 +197,7 @@ async def discover_people(
                 "city": persona.city if show_location else None,
                 "country": persona.country if show_location else None,
                 "social_intent": persona.social_intent,
+                "availability": active_availability,
                 "relationship": {
                     "following": following,
                     "followed_by": followed_by,
