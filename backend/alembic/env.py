@@ -19,6 +19,7 @@ from components.room.model import Room, RoomMember, RoomBan
 from components.message.model import Message, PrivateMessage
 from components.message.reaction_model import MessageReaction
 from components.transcription.model import MediaTranscriptionJob
+from components.reputation.model import AccountReputationAssessment
 from components.device.model import UserDevice
 from components.identity.model import (
     Account,

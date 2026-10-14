@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.identity.model import Account, Persona
+from components.reputation.service import ensure_space_creation_privilege
 from components.room.model import Room, RoomBan, RoomMember
 from components.space.capacity import assert_space_has_capacity, lock_space_admission_policy
 from components.space.model import SpaceMembership, SpaceSettings, SpaceTag
@@ -376,6 +377,7 @@ async def create_space(
     payload: SpaceCreateRequest,
 ) -> dict:
     account = await _get_account(db, viewer_uid)
+    await ensure_space_creation_privilege(db, account)
 
     room = Room(
         name=payload.name,
