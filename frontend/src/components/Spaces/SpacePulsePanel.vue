@@ -16,14 +16,19 @@
 		</div>
 		<template v-else-if="pulse">
 			<div class="pulse-grid">
-				<article class="pulse-stat pulse-stat--conversation">
+				<RouterLink
+					class="pulse-stat pulse-stat--conversation pulse-stat--link"
+					:to="{ name: 'space', params: { uid: spaceUid }, query: { from: 'pulse' } }"
+					aria-label="Перейти в текущий разговор пространства"
+				>
 					<i class="fas fa-comments" aria-hidden="true"></i>
 					<div>
 						<span>Разговор</span>
 						<strong>{{ conversationLabel }}</strong>
 						<small>{{ conversationDetail }}</small>
 					</div>
-				</article>
+					<i class="fas fa-arrow-right pulse-entry-icon" aria-hidden="true"></i>
+				</RouterLink>
 
 				<article class="pulse-stat">
 					<i class="fas fa-user-group" aria-hidden="true"></i>
@@ -34,11 +39,25 @@
 					</div>
 				</article>
 
-				<article class="pulse-stat pulse-stat--next">
+				<RouterLink
+					v-if="pulse.next_moment"
+					class="pulse-stat pulse-stat--next pulse-stat--link"
+					:to="nextMomentTarget"
+					:aria-label="`Открыть: ${pulse.next_moment.title}`"
+				>
 					<i :class="nextMomentIcon" aria-hidden="true"></i>
 					<div>
 						<span>Дальше</span>
-						<strong>{{ pulse.next_moment?.title || 'Пока без планов' }}</strong>
+						<strong>{{ pulse.next_moment.title }}</strong>
+						<small>{{ nextMomentLabel }}</small>
+					</div>
+					<i class="fas fa-arrow-right pulse-entry-icon" aria-hidden="true"></i>
+				</RouterLink>
+				<article v-else class="pulse-stat pulse-stat--next">
+					<i :class="nextMomentIcon" aria-hidden="true"></i>
+					<div>
+						<span>Дальше</span>
+						<strong>Пока без планов</strong>
 						<small>{{ nextMomentLabel }}</small>
 					</div>
 				</article>
@@ -54,7 +73,12 @@
 						v-for="person in livePeople"
 						:key="person.persona_uid"
 						class="pulse-person"
-						:to="{ name: 'UserProfile', params: { uid: person.account_uid } }"
+						:to="{
+							name: 'UserProfile',
+							params: { uid: person.account_uid },
+							query: { from: 'space-pulse', space: spaceUid, intent: person.intent || 'open' },
+						}"
+						:aria-label="`Открыть образ ${person.display_name || person.handle || 'участника'}`"
 					>
 						<span class="pulse-avatar">
 							<img v-if="person.avatar" :src="resolveAvatar(person.avatar)" alt="" />
@@ -64,6 +88,7 @@
 							<strong>{{ person.display_name || person.handle || 'Участник' }}</strong>
 							<small>{{ person.note || intentLabel(person.intent) }}</small>
 						</span>
+						<i class="fas fa-chevron-right pulse-person-arrow" aria-hidden="true"></i>
 					</RouterLink>
 				</div>
 			</div>
@@ -79,7 +104,7 @@
 					</ul>
 					<p v-else>История пространства пока только начинается.</p>
 				</div>
-				<RouterLink class="pulse-chat-link" :to="{ name: 'space', params: { uid: spaceUid } }">
+				<RouterLink class="pulse-chat-link" :to="{ name: 'space', params: { uid: spaceUid }, query: { from: 'pulse' } }">
 					<i class="fas fa-arrow-right" aria-hidden="true"></i>
 					<span>Войти в разговор</span>
 				</RouterLink>
@@ -122,6 +147,22 @@ const nextMomentLabel = computed(() => {
 	const item = pulse.value?.next_moment;
 	if (!item?.starts_at) return 'Создайте повод встретиться';
 	return new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.starts_at));
+});
+const nextMomentTarget = computed(() => {
+	const item = pulse.value?.next_moment;
+	if (!item) return { name: 'space-life', params: { uid: props.spaceUid } };
+	if (item.kind === 'event') {
+		return {
+			name: 'space-community',
+			params: { uid: props.spaceUid },
+			query: { tab: 'events', focus: item.uid, from: 'pulse' },
+		};
+	}
+	return {
+		name: 'space-life',
+		params: { uid: props.spaceUid },
+		query: { tab: 'activities', focus: item.uid, from: 'pulse' },
+	};
 });
 
 const load = async () => {
@@ -167,8 +208,9 @@ onMounted(load);
 .pulse-card{display:grid;gap:var(--ui-space-4);margin-bottom:var(--ui-space-5);padding:clamp(1rem,2.5vw,1.5rem);border:1px solid var(--ui-border);border-radius:var(--ui-radius-xl);background:linear-gradient(145deg,var(--ui-surface),color-mix(in srgb,var(--ui-primary-soft) 35%,var(--ui-surface)));box-shadow:var(--ui-shadow-sm)}
 .pulse-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3)}.pulse-head>div{display:grid;gap:.15rem}.pulse-eyebrow{color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800;letter-spacing:.06em;text-transform:uppercase}.pulse-head strong{font-size:var(--ui-text-lg)}.pulse-refresh{width:2.45rem;height:2.45rem;display:grid;place-items:center;border:1px solid var(--ui-border);border-radius:50%;background:var(--ui-surface);color:var(--ui-text-muted);cursor:pointer}.pulse-refresh:disabled{opacity:.6;cursor:default}
 .pulse-state{padding:var(--ui-space-5);text-align:center;color:var(--ui-text-muted)}.pulse-state--error{color:var(--ui-danger)}
-.pulse-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ui-space-3)}.pulse-stat{min-width:0;display:flex;align-items:center;gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface)}.pulse-stat>i{width:2.4rem;height:2.4rem;display:grid;place-items:center;flex:0 0 auto;border-radius:.8rem;background:var(--ui-primary-soft);color:var(--ui-primary)}.pulse-stat>div{min-width:0;display:grid;gap:.15rem}.pulse-stat span,.pulse-stat small{color:var(--ui-text-subtle);font-size:var(--ui-text-xs)}.pulse-stat strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-stat--conversation>i{background:var(--ui-success-soft);color:var(--ui-success)}.pulse-stat--next>i{background:var(--ui-info-soft);color:var(--ui-info)}
-.pulse-live{display:grid;gap:var(--ui-space-3)}.pulse-section-title{display:flex;align-items:center;gap:.5rem;color:var(--ui-text)}.live-dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--ui-success);box-shadow:0 0 0 .22rem color-mix(in srgb,var(--ui-success) 15%,transparent)}.pulse-people{display:flex;gap:var(--ui-space-2);overflow-x:auto;padding-bottom:.2rem;scrollbar-width:none}.pulse-person{min-width:12.5rem;max-width:16rem;display:flex;align-items:center;gap:.65rem;padding:.65rem .75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface);color:var(--ui-text);text-decoration:none}.pulse-avatar{width:2.25rem;height:2.25rem;display:grid;place-items:center;flex:0 0 auto;overflow:hidden;border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-weight:800}.pulse-avatar img{width:100%;height:100%;object-fit:cover}.pulse-person-copy{min-width:0;display:grid}.pulse-person-copy strong,.pulse-person-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-person-copy small{color:var(--ui-text-muted);font-size:var(--ui-text-xs)}
+.pulse-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ui-space-3)}.pulse-stat{min-width:0;display:flex;align-items:center;gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface)}.pulse-stat>i:first-child{width:2.4rem;height:2.4rem;display:grid;place-items:center;flex:0 0 auto;border-radius:.8rem;background:var(--ui-primary-soft);color:var(--ui-primary)}.pulse-stat>div{min-width:0;display:grid;gap:.15rem;flex:1}.pulse-stat span,.pulse-stat small{color:var(--ui-text-subtle);font-size:var(--ui-text-xs)}.pulse-stat strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-stat--conversation>i:first-child{background:var(--ui-success-soft);color:var(--ui-success)}.pulse-stat--next>i:first-child{background:var(--ui-info-soft);color:var(--ui-info)}.pulse-stat--link{color:inherit;text-decoration:none;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.pulse-stat--link:hover,.pulse-stat--link:focus-visible{transform:translateY(-1px);border-color:color-mix(in srgb,var(--ui-primary) 36%,var(--ui-border));box-shadow:var(--ui-shadow-sm);outline:none}.pulse-entry-icon{flex:0 0 auto;color:var(--ui-text-subtle);font-size:.8rem}
+.pulse-live{display:grid;gap:var(--ui-space-3)}.pulse-section-title{display:flex;align-items:center;gap:.5rem;color:var(--ui-text)}.live-dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--ui-success);box-shadow:0 0 0 .22rem color-mix(in srgb,var(--ui-success) 15%,transparent)}.pulse-people{display:flex;gap:var(--ui-space-2);overflow-x:auto;padding-bottom:.2rem;scrollbar-width:none}.pulse-person{min-width:12.5rem;max-width:16rem;display:flex;align-items:center;gap:.65rem;padding:.65rem .75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface);color:var(--ui-text);text-decoration:none;transition:border-color .16s ease,transform .16s ease}.pulse-person:hover,.pulse-person:focus-visible{transform:translateY(-1px);border-color:color-mix(in srgb,var(--ui-primary) 36%,var(--ui-border));outline:none}.pulse-avatar{width:2.25rem;height:2.25rem;display:grid;place-items:center;flex:0 0 auto;overflow:hidden;border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-weight:800}.pulse-avatar img{width:100%;height:100%;object-fit:cover}.pulse-person-copy{min-width:0;display:grid;flex:1}.pulse-person-copy strong,.pulse-person-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-person-copy small{color:var(--ui-text-muted);font-size:var(--ui-text-xs)}.pulse-person-arrow{flex:0 0 auto;color:var(--ui-text-subtle);font-size:.7rem}
 .pulse-lower{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:var(--ui-space-4)}.pulse-history{min-width:0;display:grid;gap:var(--ui-space-2)}.pulse-history ul{display:grid;gap:.35rem;margin:0;padding:0;list-style:none}.pulse-history li{display:flex;align-items:baseline;justify-content:space-between;gap:var(--ui-space-3);color:var(--ui-text-muted);font-size:var(--ui-text-sm)}.pulse-history li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-history time{flex:0 0 auto;color:var(--ui-text-subtle);font-size:var(--ui-text-xs)}.pulse-history p{margin:0;color:var(--ui-text-subtle);font-size:var(--ui-text-sm)}.pulse-chat-link{display:inline-flex;align-items:center;gap:.55rem;min-height:2.7rem;padding:0 var(--ui-space-4);border-radius:var(--ui-radius-pill);background:var(--ui-primary);color:var(--ui-on-primary);text-decoration:none;font-weight:800}
-@media(max-width:820px){.pulse-card{gap:var(--ui-space-3);margin-bottom:var(--ui-space-3);padding:.85rem;border-radius:var(--ui-radius-lg)}.pulse-grid{grid-template-columns:1fr}.pulse-stat{padding:.75rem}.pulse-lower{grid-template-columns:1fr}.pulse-chat-link{justify-content:center}.pulse-history li{align-items:flex-start;flex-direction:column;gap:.1rem}.pulse-person{min-width:11.5rem}.pulse-head strong{font-size:var(--ui-text-md)}}
+@media(max-width:820px){.pulse-card{gap:var(--ui-space-3);margin-bottom:var(--ui-space-3);padding:.85rem;border-radius:var(--ui-radius-lg)}.pulse-grid{grid-template-columns:1fr}.pulse-stat{padding:.75rem}.pulse-stat--link:hover{transform:none}.pulse-lower{grid-template-columns:1fr}.pulse-chat-link{justify-content:center}.pulse-history li{align-items:flex-start;flex-direction:column;gap:.1rem}.pulse-person{min-width:11.5rem}.pulse-head strong{font-size:var(--ui-text-md)}}
+@media(prefers-reduced-motion:reduce){.pulse-stat--link,.pulse-person{transition:none}.pulse-stat--link:hover,.pulse-person:hover{transform:none}}
 </style>
