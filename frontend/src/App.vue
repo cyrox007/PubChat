@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 import HeaderComponent from './components/HeaderComponent/index.vue';
@@ -8,8 +8,10 @@ import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vu
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
+import SpacePulsePanel from '@/components/Spaces/SpacePulsePanel.vue';
 
 const store = useStore();
+const route = useRoute();
 const router = useRouter();
 const networkOnline = ref(navigator.onLine);
 const bootstrapError = ref(false);
@@ -26,6 +28,7 @@ const ROUTE_PROGRESS_MIN_VISIBLE = 180;
 
 const BOOTSTRAP_RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000];
 const TRANSIENT_BOOTSTRAP_STATUSES = new Set([502, 503, 504]);
+const spacePulseUid = computed(() => route.name === 'space-life' ? String(route.params.uid || '') : '');
 
 const clearBootstrapRetry = () => {
 	if (bootstrapRetryTimer) {
@@ -255,9 +258,10 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 		</transition>
 
 		<main class="container app-content" :aria-busy="routePending ? 'true' : 'false'">
-			<RouterView v-slot="{ Component, route }">
+			<SpacePulsePanel v-if="spacePulseUid" :space-uid="spacePulseUid" />
+			<RouterView v-slot="{ Component, route: routedView }">
 				<Transition name="ui-route">
-					<div :key="route.fullPath" class="route-view-frame">
+					<div :key="routedView.fullPath" class="route-view-frame">
 						<component :is="Component" />
 					</div>
 				</Transition>

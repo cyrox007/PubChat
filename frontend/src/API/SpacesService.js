@@ -27,6 +27,10 @@ export default class SpacesService {
 		return spaceRequest($api.get(`/spaces/v1/${spaceUid}`));
 	}
 
+	static pulse(spaceUid) {
+		return spaceRequest($api.get(`/spaces/v1/${spaceUid}/pulse`));
+	}
+
 	static create(payload) {
 		return spaceRequest($api.post('/spaces/v1', payload));
 	}

@@ -219,7 +219,6 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-
   browser-smoke:
     runs-on: ubuntu-latest
     services:
@@ -281,10 +280,13 @@ jobs:
           python -m pip install -r backend/requirements.txt
           cd frontend
           npm ci
-          npm install --no-save --package-lock=false @playwright/test@1.55.0
+          rm -rf /tmp/pubchat-playwright
+          npm install --prefix /tmp/pubchat-playwright --no-package-lock --no-save @playwright/test@1.55.0
+          mkdir -p node_modules/@playwright
+          ln -s /tmp/pubchat-playwright/node_modules/@playwright/test node_modules/@playwright/test
       - name: Install browser engines
         working-directory: frontend
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: /tmp/pubchat-playwright/node_modules/.bin/playwright install --with-deps chromium firefox webkit
       - name: Prepare browser database
         working-directory: backend
         run: alembic upgrade head
@@ -315,7 +317,7 @@ jobs:
           exit 1
       - name: Run Chromium Firefox WebKit and mobile auth/session smoke
         working-directory: frontend
-        run: npx playwright test --config=playwright.config.mjs
+        run: /tmp/pubchat-playwright/node_modules/.bin/playwright test --config=playwright.config.mjs
       - name: Print browser stack logs on failure
         if: failure()
         run: |
@@ -323,8 +325,6 @@ jobs:
           tail -n 200 /tmp/pubchat-browser-backend.log || true
           echo "=== frontend ==="
           tail -n 200 /tmp/pubchat-browser-frontend.log || true
-
-
 
   dependency-security:
     runs-on: ubuntu-latest
