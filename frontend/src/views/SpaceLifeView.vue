@@ -29,7 +29,13 @@
 
 			<div v-if="activitiesLoading" class="state-card">Загружаем активности…</div>
 			<div v-else-if="activities.length" class="activity-list">
-				<article v-for="activity in activities" :key="activity.uid" class="activity-card" :class="{ cancelled: activity.status === 'cancelled' }">
+				<article
+					v-for="activity in activities"
+					:id="`activity-${activity.uid}`"
+					:key="activity.uid"
+					class="activity-card"
+					:class="{ cancelled: activity.status === 'cancelled', 'pulse-focused': focusedActivityUid === String(activity.uid) }"
+				>
 					<div class="activity-main">
 						<div class="activity-icon"><i :class="activityIcon(activity.activity_type)"></i></div>
 						<div class="activity-copy">
@@ -71,7 +77,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -88,7 +94,7 @@ const space = ref(null);
 const appearance = ref({ theme_preset: 'lounge', cover_preset: 'soft-gradient', ambient_icon: null, welcome_line: null });
 const appearanceDraft = reactive({ theme_preset: 'lounge', cover_preset: 'soft-gradient', ambient_icon: '', welcome_line: '' });
 const reminders = ref({});
-const tab = ref('activities');
+const tab = ref(route.query.tab === 'appearance' ? 'appearance' : 'activities');
 const activities = ref([]);
 const activitiesLoading = ref(false);
 const showActivityForm = ref(false);
@@ -99,6 +105,14 @@ const activityNotice = ref(null);
 const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const activityDraft = reactive({ title: '', description: '', activity_type: 'hangout', starts_at: '', timezone: browserTimezone, recurrence: 'none' });
 const currentUserUid = computed(() => store.getters.getUser?.uid);
+const focusedActivityUid = computed(() => String(route.query.focus || ''));
+
+const focusRequestedActivity = async () => {
+	if (tab.value !== 'activities' || !focusedActivityUid.value || activitiesLoading.value) return;
+	await nextTick();
+	const target = document.getElementById(`activity-${focusedActivityUid.value}`);
+	target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
 
 const applyAppearance = (value = {}) => {
 	appearance.value = { theme_preset: value.theme_preset || 'lounge', cover_preset: value.cover_preset || 'soft-gradient', ambient_icon: value.ambient_icon || null, welcome_line: value.welcome_line || null };
@@ -127,7 +141,7 @@ const loadActivities = async () => {
 		activities.value = activityResponse.data.activities || [];
 		reminders.value = Object.fromEntries((reminderResponse.data.reminders || []).map((item) => [item.activity_uid, item]));
 	} catch (error) { console.error(error); activityNotice.value = { type: 'error', message: 'Не удалось загрузить активности или напоминания.' }; }
-	finally { activitiesLoading.value = false; }
+	finally { activitiesLoading.value = false; await focusRequestedActivity(); }
 };
 
 const createActivity = async () => {
@@ -157,9 +171,11 @@ const activityIcon = (value) => ({ quiz: 'fas fa-circle-question', game: 'fas fa
 const recurrenceLabel = (value) => ({ daily: 'каждый день', weekly: 'каждую неделю', monthly: 'каждый месяц' }[value] || '');
 const formatDate = (value) => new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 const activityTimeLabel = (activity) => `${activity.recurrence === 'none' ? '' : 'Следующая: '}${formatDate(activity.next_starts_at || activity.starts_at)}`;
+watch(() => route.query.tab, (value) => { tab.value = value === 'appearance' ? 'appearance' : 'activities'; focusRequestedActivity(); });
+watch(() => route.query.focus, focusRequestedActivity);
 onMounted(load);
 </script>
 
 <style scoped>
-.life-shell{display:grid;gap:var(--ui-space-5);padding-bottom:var(--ui-space-8)}.life-hero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--ui-space-5);padding:clamp(1.4rem,4vw,2.4rem);border:1px solid var(--ui-border);border-radius:var(--ui-radius-xl);background:linear-gradient(135deg,var(--ui-surface),var(--ui-primary-soft))}.ambient{width:4rem;height:4rem;display:grid;place-items:center;border-radius:1.25rem;background:var(--ui-surface);font-size:1.8rem;box-shadow:var(--ui-shadow-sm)}.eyebrow{color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800;text-transform:uppercase}.life-hero h1{margin:.25rem 0;font-size:clamp(1.7rem,4vw,2.6rem)}.life-hero p{margin:0;color:var(--ui-text-muted)}.life-tabs{display:flex;gap:var(--ui-space-2);border-bottom:1px solid var(--ui-border)}.life-tabs button{padding:.8rem 1rem;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ui-text-muted);font:inherit;font-weight:700;cursor:pointer}.life-tabs button.active{border-bottom-color:var(--ui-primary);color:var(--ui-text)}.content-card{display:grid;gap:var(--ui-space-4);padding:var(--ui-space-5);border:1px solid var(--ui-border);border-radius:var(--ui-radius-xl);background:var(--ui-surface)}.section-head{display:flex;justify-content:space-between;gap:var(--ui-space-4);align-items:center}.section-head div{display:grid}.section-head span{color:var(--ui-text-subtle);font-size:var(--ui-text-xs);text-transform:uppercase}.section-head strong{font-size:var(--ui-text-xl)}.notice{padding:var(--ui-space-3);border-radius:var(--ui-radius-md);background:var(--ui-success-soft);color:var(--ui-success)}.notice--error{background:var(--ui-danger-soft);color:var(--ui-danger)}.activity-form,.appearance-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface-muted)}.activity-form label,.appearance-form label{display:grid;gap:.35rem;font-size:var(--ui-text-sm);font-weight:700}.timezone-hint{color:var(--ui-text-subtle);font-size:var(--ui-text-xs);font-weight:500}.activity-form input,.activity-form select,.activity-form textarea,.appearance-form input,.appearance-form select{width:100%;padding:.75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface);color:var(--ui-text);font:inherit}.wide{grid-column:1/-1}.form-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--ui-space-3)}.activity-list{display:grid;gap:var(--ui-space-3)}.activity-card{display:grid;gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg)}.activity-card.cancelled{opacity:.62}.activity-main{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--ui-space-3);align-items:center}.activity-icon{width:2.8rem;height:2.8rem;display:grid;place-items:center;border-radius:.9rem;background:var(--ui-primary-soft);color:var(--ui-primary)}.activity-copy p{margin:.35rem 0;color:var(--ui-text-muted)}.activity-copy small{color:var(--ui-text-subtle)}.activity-title{display:flex;gap:var(--ui-space-2);align-items:center;flex-wrap:wrap}.activity-title span{padding:.2rem .45rem;border-radius:var(--ui-radius-pill);background:var(--ui-surface-muted);font-size:.7rem}.activity-title .cancelled-label{background:var(--ui-danger-soft);color:var(--ui-danger)}.activity-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap}.rsvp-actions{display:flex;gap:.35rem;flex-wrap:wrap}.rsvp-actions button{min-height:2.25rem;padding:0 .7rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-pill);background:var(--ui-surface);color:var(--ui-text-muted);cursor:pointer}.rsvp-actions button.active{background:var(--ui-primary-soft);border-color:var(--ui-primary);color:var(--ui-primary)}.rsvp-actions .clear,.rsvp-actions .danger-link{border:0;background:transparent}.rsvp-actions .danger-link{color:var(--ui-danger)}.state-card{display:grid;gap:.25rem;padding:var(--ui-space-5);border:1px dashed var(--ui-border);border-radius:var(--ui-radius-lg);color:var(--ui-text-muted)}.state-card strong{color:var(--ui-text)}@media(max-width:760px){.life-hero{grid-template-columns:auto 1fr}.life-hero .ui-button{grid-column:1/-1}.activity-form,.appearance-form{grid-template-columns:1fr}.wide{grid-column:auto}.section-head{align-items:stretch;flex-direction:column}.activity-actions{display:grid;grid-template-columns:1fr}.form-actions{flex-direction:column;align-items:stretch}}
+.life-shell{display:grid;gap:var(--ui-space-5);padding-bottom:var(--ui-space-8)}.life-hero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--ui-space-5);padding:clamp(1.4rem,4vw,2.4rem);border:1px solid var(--ui-border);border-radius:var(--ui-radius-xl);background:linear-gradient(135deg,var(--ui-surface),var(--ui-primary-soft))}.ambient{width:4rem;height:4rem;display:grid;place-items:center;border-radius:1.25rem;background:var(--ui-surface);font-size:1.8rem;box-shadow:var(--ui-shadow-sm)}.eyebrow{color:var(--ui-primary);font-size:var(--ui-text-xs);font-weight:800;text-transform:uppercase}.life-hero h1{margin:.25rem 0;font-size:clamp(1.7rem,4vw,2.6rem)}.life-hero p{margin:0;color:var(--ui-text-muted)}.life-tabs{display:flex;gap:var(--ui-space-2);border-bottom:1px solid var(--ui-border)}.life-tabs button{padding:.8rem 1rem;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ui-text-muted);font:inherit;font-weight:700;cursor:pointer}.life-tabs button.active{border-bottom-color:var(--ui-primary);color:var(--ui-text)}.content-card{display:grid;gap:var(--ui-space-4);padding:var(--ui-space-5);border:1px solid var(--ui-border);border-radius:var(--ui-radius-xl);background:var(--ui-surface)}.section-head{display:flex;justify-content:space-between;gap:var(--ui-space-4);align-items:center}.section-head div{display:grid}.section-head span{color:var(--ui-text-subtle);font-size:var(--ui-text-xs);text-transform:uppercase}.section-head strong{font-size:var(--ui-text-xl)}.notice{padding:var(--ui-space-3);border-radius:var(--ui-radius-md);background:var(--ui-success-soft);color:var(--ui-success)}.notice--error{background:var(--ui-danger-soft);color:var(--ui-danger)}.activity-form,.appearance-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface-muted)}.activity-form label,.appearance-form label{display:grid;gap:.35rem;font-size:var(--ui-text-sm);font-weight:700}.timezone-hint{color:var(--ui-text-subtle);font-size:var(--ui-text-xs);font-weight:500}.activity-form input,.activity-form select,.activity-form textarea,.appearance-form input,.appearance-form select{width:100%;padding:.75rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface);color:var(--ui-text);font:inherit}.wide{grid-column:1/-1}.form-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--ui-space-3)}.activity-list{display:grid;gap:var(--ui-space-3)}.activity-card{display:grid;gap:var(--ui-space-3);padding:var(--ui-space-4);border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);scroll-margin-top:6rem;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}.activity-card.pulse-focused{border-color:color-mix(in srgb,var(--ui-primary) 52%,var(--ui-border));background:color-mix(in srgb,var(--ui-primary-soft) 24%,var(--ui-surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-primary) 12%,transparent)}.activity-card.cancelled{opacity:.62}.activity-main{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--ui-space-3);align-items:center}.activity-icon{width:2.8rem;height:2.8rem;display:grid;place-items:center;border-radius:.9rem;background:var(--ui-primary-soft);color:var(--ui-primary)}.activity-copy p{margin:.35rem 0;color:var(--ui-text-muted)}.activity-copy small{color:var(--ui-text-subtle)}.activity-title{display:flex;gap:var(--ui-space-2);align-items:center;flex-wrap:wrap}.activity-title span{padding:.2rem .45rem;border-radius:var(--ui-radius-pill);background:var(--ui-surface-muted);font-size:.7rem}.activity-title .cancelled-label{background:var(--ui-danger-soft);color:var(--ui-danger)}.activity-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap}.rsvp-actions{display:flex;gap:.35rem;flex-wrap:wrap}.rsvp-actions button{min-height:2.25rem;padding:0 .7rem;border:1px solid var(--ui-border);border-radius:var(--ui-radius-pill);background:var(--ui-surface);color:var(--ui-text-muted);cursor:pointer}.rsvp-actions button.active{background:var(--ui-primary-soft);border-color:var(--ui-primary);color:var(--ui-primary)}.rsvp-actions .clear,.rsvp-actions .danger-link{border:0;background:transparent}.rsvp-actions .danger-link{color:var(--ui-danger)}.state-card{display:grid;gap:.25rem;padding:var(--ui-space-5);border:1px dashed var(--ui-border);border-radius:var(--ui-radius-lg);color:var(--ui-text-muted)}.state-card strong{color:var(--ui-text)}@media(max-width:760px){.life-hero{grid-template-columns:auto 1fr}.life-hero .ui-button{grid-column:1/-1}.activity-form,.appearance-form{grid-template-columns:1fr}.wide{grid-column:auto}.section-head{align-items:stretch;flex-direction:column}.activity-actions{display:grid;grid-template-columns:1fr}.form-actions{flex-direction:column;align-items:stretch}}@media(prefers-reduced-motion:reduce){.activity-card{transition:none}}
 </style>
