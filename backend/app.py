@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     from views.rooms import ws_routers as ws_routes_chat
     from views.service import routers as service_routes
     from views.social import routers as social_routes
+    from views.spaces import pulse_routers as space_pulse_routes
     from views.spaces import routers as spaces_routes
     from views.support import routers as support_routes
     from views.users import routers as user_routes
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     user_routes.install(app)
     social_routes.install(app)
     spaces_routes.install(app)
+    space_pulse_routes.install(app)
     moderation_routes.install(app)
     moderation_restriction_routes.install(app)
     moderation_ai_routes.install(app)
