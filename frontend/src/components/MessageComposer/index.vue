@@ -1,4 +1,5 @@
 <template>
+  <SpaceLivePresence />
   <section class="composer" :class="{ disabled: isDisabled }">
     <div v-if="replyTo" class="composer__reply">
       <div><strong>{{ replyTo.sender?.name || 'Пользователь' }}</strong><span>{{ truncate(replyTo.content, 72) }}</span></div>
@@ -57,6 +58,7 @@ import imageCompression from 'browser-image-compression';
 import EmojiPicker from './EmojiPicker.vue';
 import VoiceMessage from '@/components/Message/VoiceMessage.vue';
 import VideoMessage from '@/components/Message/VideoMessage.vue';
+import SpaceLivePresence from '@/components/Spaces/SpaceLivePresence.vue';
 
 const emit = defineEmits(['send-message']);
 const props = defineProps({
