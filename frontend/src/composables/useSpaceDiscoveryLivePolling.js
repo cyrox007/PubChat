@@ -20,9 +20,7 @@ export const mergeDiscoveryLiveState = (spaces, liveItems) => {
 	const liveByUid = new Map((liveItems || []).map((item) => [String(item.space_uid), item]));
 
 	return spaces.map((space) => {
-		const live = liveByUid.get(String(space.uid));
-		if (!live) return space;
-
+		const live = liveByUid.get(String(space.uid)) || null;
 		const discovery = space.discovery || {};
 		const stableReasons = (discovery.reasons || []).filter((reason) => !LIVE_REASON_CODES.has(reason?.code));
 		return {
