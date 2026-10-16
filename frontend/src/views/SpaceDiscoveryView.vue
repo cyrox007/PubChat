@@ -138,6 +138,7 @@ import DiscoveryService from '@/API/DiscoveryService';
 import EngagementService from '@/API/EngagementService';
 import SpacesService from '@/API/SpacesService';
 import CreateSpaceModal from '@/components/Spaces/CreateSpaceModal.vue';
+import { useSpaceDiscoveryLivePolling } from '@/composables/useSpaceDiscoveryLivePolling';
 
 const router = useRouter();
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
@@ -150,6 +151,8 @@ const purpose = ref(null);
 const tagFilter = ref(null);
 const createOpen = ref(false);
 const joiningUid = ref(null);
+
+useSpaceDiscoveryLivePolling(spaces);
 
 const purposeOptions = [
 	{ value: null, label: 'Все' },
