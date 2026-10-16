@@ -4,7 +4,7 @@ from fastapi import APIRouter, FastAPI, WebSocket, status
 
 from utils.logger import setup_logger
 from views.realtime.ws_auth import authenticate_websocket
-from views.rooms.ws_handlers import handle_websocket_connection
+from views.rooms.ws_typing import handle_websocket_connection
 
 logger = setup_logger(__name__)
 
