@@ -25,6 +25,7 @@ def create_app() -> FastAPI:
     from views.admin import profile_routers as admin_profile_routes
     from views.admin import routers as admin_routers
     from views.achievements import routers as achievement_routes
+    from views.calls import routers as call_routes
     from views.calls import ws_routers as call_ws_routes
     from views.csrf import routers as csrf_routes
     from views.discovery import routers as discovery_routes
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     ws_routes_chat.install(app)
     http_routers_messenger.install(app)
     ws_routers_messenger.install(app)
+    call_routes.install(app)
     call_ws_routes.install(app)
     message_routes.install(app)
     admin_routers.install(app)
