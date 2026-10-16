@@ -23,7 +23,18 @@
 				</button>
 			</form>
 
-			<div class="purpose-filter" role="list" aria-label="Формат пространства">
+			<div class="purpose-filter" role="list" aria-label="Режим и формат пространства">
+				<button
+					type="button"
+					class="filter-chip filter-chip--live"
+					:class="{ active: liveMode }"
+					:aria-pressed="liveMode"
+					@click="toggleLiveMode"
+				>
+					<span class="filter-live-dot" aria-hidden="true"></span>
+					Живые сейчас
+				</button>
+				<span class="filter-separator" aria-hidden="true"></span>
 				<button
 					v-for="item in purposeOptions"
 					:key="item.value || 'all'"
@@ -40,7 +51,7 @@
 		<Transition name="ui-state" mode="out-in">
 		<section v-if="loading" key="loading" class="discovery-state" role="status">
 			<div class="state-orbit"><i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i></div>
-			<strong>Ищем живые пространства…</strong>
+			<strong>{{ liveMode ? 'Смотрим, где жизнь идёт прямо сейчас…' : 'Ищем живые пространства…' }}</strong>
 		</section>
 
 		<section v-else-if="errorMessage" key="error" class="discovery-state discovery-state--error">
@@ -121,10 +132,13 @@
 		</section>
 
 		<section v-else key="empty" class="discovery-state">
-			<div class="state-orbit"><i class="fas fa-compass" aria-hidden="true"></i></div>
-			<strong>Подходящих пространств пока нет</strong>
-			<span>Измените фильтр или создайте своё место с понятной темой и атмосферой.</span>
-			<button class="ui-button" type="button" @click="createOpen = true">Создать первым</button>
+			<div class="state-orbit"><i :class="liveMode ? 'fas fa-wave-square' : 'fas fa-compass'" aria-hidden="true"></i></div>
+			<strong>{{ liveMode ? 'Сейчас тихо' : 'Подходящих пространств пока нет' }}</strong>
+			<span v-if="liveMode && livePresenceAvailable">Новые разговоры и присутствующие участники появятся здесь автоматически.</span>
+			<span v-else-if="liveMode">Присутствие людей временно недоступно; активные разговоры всё равно появятся здесь.</span>
+			<span v-else>Измените фильтр или создайте своё место с понятной темой и атмосферой.</span>
+			<button v-if="liveMode" class="ui-button" type="button" @click="toggleLiveMode">Показать все пространства</button>
+			<button v-else class="ui-button" type="button" @click="createOpen = true">Создать первым</button>
 		</section>
 		</Transition>
 	</main>
@@ -149,10 +163,10 @@ const errorMessage = ref('');
 const searchQuery = ref('');
 const purpose = ref(null);
 const tagFilter = ref(null);
+const liveMode = ref(false);
+const livePresenceAvailable = ref(true);
 const createOpen = ref(false);
 const joiningUid = ref(null);
-
-useSpaceDiscoveryLivePolling(spaces);
 
 const purposeOptions = [
 	{ value: null, label: 'Все' },
@@ -171,39 +185,75 @@ const defaultAppearance = (spaceUid) => ({
 	welcome_line: null,
 });
 
-const hydrateAppearances = async (items) => {
+const discoveryParams = () => ({
+	q: searchQuery.value || undefined,
+	purpose: purpose.value || undefined,
+	tag: tagFilter.value || undefined,
+	live_now: liveMode.value || undefined,
+	limit: 50,
+});
+
+const hydrateAppearances = async (items, previousItems = []) => {
 	if (!items.length) return items;
-	try {
-		const response = await EngagementService.spaceAppearances(items.map((item) => item.uid));
-		const appearances = new Map((response.data.appearances || []).map((item) => [item.space_uid, item]));
-		return items.map((space) => ({
-			...space,
-			appearance: appearances.get(space.uid) || defaultAppearance(space.uid),
-		}));
-	} catch (error) {
-		console.error('Не удалось загрузить оформление пространств:', error);
-		return items.map((space) => ({ ...space, appearance: defaultAppearance(space.uid) }));
+	const appearances = new Map(
+		previousItems
+			.filter((item) => item.appearance)
+			.map((item) => [String(item.uid), item.appearance]),
+	);
+	const missing = items.filter((item) => !appearances.has(String(item.uid)));
+
+	if (missing.length) {
+		try {
+			const response = await EngagementService.spaceAppearances(missing.map((item) => item.uid));
+			for (const appearance of response.data.appearances || []) {
+				appearances.set(String(appearance.space_uid), appearance);
+			}
+		} catch (error) {
+			console.error('Не удалось загрузить оформление пространств:', error);
+		}
 	}
+
+	return items.map((space) => ({
+		...space,
+		appearance: appearances.get(String(space.uid)) || defaultAppearance(space.uid),
+	}));
+};
+
+const applyDiscoveryResponse = async (response) => {
+	livePresenceAvailable.value = response.data.live_presence_available !== false;
+	const listed = response.data.spaces || [];
+	spaces.value = await hydrateAppearances(listed, spaces.value);
 };
 
 const loadSpaces = async () => {
 	loading.value = true;
 	errorMessage.value = '';
 	try {
-		const response = await DiscoveryService.spaces({
-			q: searchQuery.value || undefined,
-			purpose: purpose.value || undefined,
-			tag: tagFilter.value || undefined,
-			limit: 50,
-		});
-		const listed = response.data.spaces || [];
-		spaces.value = await hydrateAppearances(listed);
+		const response = await DiscoveryService.spaces(discoveryParams());
+		await applyDiscoveryResponse(response);
 	} catch (error) {
 		console.error('Не удалось загрузить Living Spaces:', error);
 		errorMessage.value = 'Проверьте соединение и попробуйте ещё раз.';
 	} finally {
 		loading.value = false;
 	}
+};
+
+async function refreshLiveListing() {
+	if (!liveMode.value) return;
+	try {
+		const response = await DiscoveryService.spaces(discoveryParams());
+		await applyDiscoveryResponse(response);
+	} catch (error) {
+		console.warn('Не удалось обновить режим «Живые сейчас»:', error);
+	}
+}
+
+useSpaceDiscoveryLivePolling(spaces, { liveMode, refreshLiveListing });
+
+const toggleLiveMode = async () => {
+	liveMode.value = !liveMode.value;
+	await loadSpaces();
 };
 
 const setPurpose = async (value) => {
@@ -324,9 +374,12 @@ onMounted(loadSpaces);
 .search-box { min-height: 3.2rem; display: flex; align-items: center; gap: var(--ui-space-3); padding: 0 var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); color: var(--ui-text-subtle); }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font: inherit; }
 .search-box button { border: 0; background: transparent; color: var(--ui-text-subtle); cursor: pointer; }
-.purpose-filter { display: flex; gap: var(--ui-space-2); overflow-x: auto; padding-bottom: .15rem; scrollbar-width: none; }
-.filter-chip { flex: 0 0 auto; min-height: 2.3rem; padding: 0 var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-sm); font-weight: 700; cursor: pointer; }
+.purpose-filter { display: flex; align-items: center; gap: var(--ui-space-2); overflow-x: auto; padding-bottom: .15rem; scrollbar-width: none; }
+.filter-chip { flex: 0 0 auto; min-height: 2.3rem; display: inline-flex; align-items: center; gap: .45rem; padding: 0 var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-sm); font-weight: 700; cursor: pointer; }
 .filter-chip.active { border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border)); background: var(--ui-primary-soft); color: var(--ui-primary); }
+.filter-chip--live.active { border-color: color-mix(in srgb, var(--ui-success) 42%, var(--ui-border)); background: var(--ui-success-soft); color: var(--ui-success); }
+.filter-live-dot { width: .52rem; height: .52rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 .2rem color-mix(in srgb, currentColor 13%, transparent); }
+.filter-separator { width: 1px; height: 1.5rem; flex: 0 0 auto; background: var(--ui-border); }
 .space-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
 .button-pending { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
 .space-card { min-width: 0; display: flex; flex-direction: column; gap: var(--ui-space-4); padding: var(--ui-space-5); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-xl); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); transition: transform var(--ui-motion-normal) var(--ui-ease), box-shadow var(--ui-motion-normal) var(--ui-ease); }
@@ -389,5 +442,9 @@ onMounted(loadSpaces);
 	.space-card { border-inline: 0; border-radius: 0; padding: var(--ui-space-4); }
 	.space-card__footer { align-items: stretch; flex-direction: column; }
 	.space-card__action { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.space-card { transition: none; }
+	.space-card:hover { transform: none; }
 }
 </style>

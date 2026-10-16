@@ -17,6 +17,7 @@ logger = setup_logger(__name__)
 
 LIVE_MESSAGE_WINDOW_MINUTES = 10
 MAX_LIVE_SPACES = 50
+MAX_INTERNAL_LIVE_SPACES = 200
 
 
 def _presence_member_text(value: object) -> str:
@@ -106,8 +107,10 @@ async def get_spaces_live_state(
     *,
     viewer_uid: UUID | str,
     space_uids: list[UUID],
+    max_spaces: int = MAX_LIVE_SPACES,
 ) -> dict:
-    unique_uids = list(dict.fromkeys(space_uids))[:MAX_LIVE_SPACES]
+    bounded_max = max(1, min(int(max_spaces), MAX_INTERNAL_LIVE_SPACES))
+    unique_uids = list(dict.fromkeys(space_uids))[:bounded_max]
     if not unique_uids:
         return {"spaces": [], "presence_available": True}
 

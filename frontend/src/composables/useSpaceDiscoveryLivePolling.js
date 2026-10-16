@@ -34,15 +34,23 @@ export const mergeDiscoveryLiveState = (spaces, liveItems) => {
 	});
 };
 
-export const useSpaceDiscoveryLivePolling = (spaces) => {
+export const useSpaceDiscoveryLivePolling = (spaces, options = {}) => {
 	let timerId = null;
 	let requestInFlight = false;
 	let stopped = false;
+	const liveMode = options.liveMode || null;
+	const refreshLiveListing = options.refreshLiveListing || null;
 
 	const refresh = async () => {
-		if (stopped || requestInFlight || document.hidden || !spaces.value.length) return;
+		if (stopped || requestInFlight || document.hidden) return;
 		requestInFlight = true;
 		try {
+			if (liveMode?.value && typeof refreshLiveListing === 'function') {
+				await refreshLiveListing();
+				return;
+			}
+
+			if (!spaces.value.length) return;
 			const requestedUids = spaces.value.map((space) => space.uid).filter(Boolean).slice(0, 50);
 			if (!requestedUids.length) return;
 
