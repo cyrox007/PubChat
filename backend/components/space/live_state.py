@@ -19,6 +19,12 @@ LIVE_MESSAGE_WINDOW_MINUTES = 10
 MAX_LIVE_SPACES = 50
 
 
+def _presence_member_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="ignore")
+    return str(value)
+
+
 async def _presence_counts(room_uids: list[UUID]) -> tuple[dict[UUID, int], bool]:
     if not room_uids:
         return {}, True
@@ -50,10 +56,11 @@ async def _presence_counts(room_uids: list[UUID]) -> tuple[dict[UUID, int], bool
     counts: dict[UUID, int] = {}
     for index, room_uid in enumerate(room_uids):
         members = raw_results[index * 2 + 1] or []
+        member_texts = [_presence_member_text(member) for member in members]
         user_uids = {
-            str(member).split("|", 1)[1]
-            for member in members
-            if "|" in str(member)
+            member.split("|", 1)[1]
+            for member in member_texts
+            if "|" in member
         }
         counts[room_uid] = len(user_uids)
     return counts, True
@@ -104,6 +111,8 @@ async def get_spaces_live_state(
     if not unique_uids:
         return {"spaces": [], "presence_available": True}
 
+    # Canonical Space visibility remains the gate for live metadata. A caller
+    # cannot probe presence for a private Space it cannot already discover.
     visible_spaces = await list_spaces(
         db,
         viewer_uid,
