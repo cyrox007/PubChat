@@ -147,6 +147,26 @@ class RealtimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
             fake_redis.last_pipeline.expire_calls,
         )
 
+    async def test_room_presence_deduplicates_multiple_connections_per_account(self):
+        room_uid = uuid4()
+        first_account = uuid4()
+        second_account = uuid4()
+
+        await self.service.register_connection('first-tab', first_account, 'room', room_uid)
+        await self.service.register_connection('second-tab', first_account, 'room', room_uid)
+        await self.service.register_connection('other-person', second_account, 'room', room_uid)
+
+        self.assertEqual(
+            await self.service.room_users(room_uid),
+            sorted([str(first_account), str(second_account)]),
+        )
+
+        await self.service.unregister_connection('first-tab')
+        self.assertIn(str(first_account), await self.service.room_users(room_uid))
+
+        await self.service.unregister_connection('second-tab')
+        self.assertNotIn(str(first_account), await self.service.room_users(room_uid))
+
 
 if __name__ == '__main__':
     unittest.main()
