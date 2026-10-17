@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:pwa": "node scripts/check-pwa.mjs",
-    "check:lifecycle": "node scripts/check-app-lifecycle.mjs"
+    "check:lifecycle": "node scripts/check-app-lifecycle.mjs",
+    "check:e2ee-verification": "node scripts/check-e2ee-verification.mjs"
   },
   "dependencies": {
     "axios": "^1.20.0",
