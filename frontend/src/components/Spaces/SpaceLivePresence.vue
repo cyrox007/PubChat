@@ -1,5 +1,6 @@
 <template>
-	<section class="live-presence" :class="{ 'live-presence--offline': !isConnected }" aria-live="polite">
+	<MessengerSecurityPanel v-if="isMessenger" />
+	<section v-else class="live-presence" :class="{ 'live-presence--offline': !isConnected }" aria-live="polite">
 		<div class="live-presence__copy">
 			<span class="live-presence__label"><span class="live-presence__dot" aria-hidden="true"></span>Сейчас здесь</span>
 			<strong>{{ presenceTitle }}</strong>
@@ -28,10 +29,13 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { useStore } from 'vuex';
+import MessengerSecurityPanel from '@/components/Messenger/MessengerSecurityPanel.vue';
 
 const store = useStore();
+const route = useRoute();
+const isMessenger = computed(() => route.name === 'messenger');
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 const users = computed(() => store.getters['chat/getConnectedUsers'] || []);
 const messages = computed(() => store.getters['chat/getMessages'] || []);
@@ -123,6 +127,7 @@ const handleSocketMessage = (event) => {
 };
 
 const sendTypingState = (active) => {
+	if (isMessenger.value) return false;
 	const currentSocket = socket.value;
 	if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN || !isConnected.value) return false;
 	try {
@@ -143,7 +148,7 @@ const stopLocalTyping = (sendStop = true) => {
 const isComposerInput = (target) => target instanceof HTMLInputElement && target.matches('.composer__bar input[type="text"]');
 
 const handleComposerInput = (event) => {
-	if (!isComposerInput(event.target)) return;
+	if (isMessenger.value || !isComposerInput(event.target)) return;
 	const value = String(event.target.value || '').trim();
 	if (!value || !isConnected.value) {
 		stopLocalTyping();
@@ -159,19 +164,26 @@ const handleComposerInput = (event) => {
 };
 
 const handleComposerKeydown = (event) => {
-	if (isComposerInput(event.target) && event.key === 'Enter') stopLocalTyping();
+	if (!isMessenger.value && isComposerInput(event.target) && event.key === 'Enter') stopLocalTyping();
 };
 
 const handleComposerBlur = (event) => {
-	if (isComposerInput(event.target)) stopLocalTyping();
+	if (!isMessenger.value && isComposerInput(event.target)) stopLocalTyping();
 };
 
 watch(socket, (nextSocket, previousSocket) => {
 	previousSocket?.removeEventListener?.('message', handleSocketMessage);
 	clearRemoteTyping();
 	stopLocalTyping(false);
-	nextSocket?.addEventListener?.('message', handleSocketMessage);
+	if (!isMessenger.value) nextSocket?.addEventListener?.('message', handleSocketMessage);
 }, { immediate: true });
+
+watch(isMessenger, (messenger) => {
+	clearRemoteTyping();
+	stopLocalTyping(false);
+	socket.value?.removeEventListener?.('message', handleSocketMessage);
+	if (!messenger) socket.value?.addEventListener?.('message', handleSocketMessage);
+});
 
 watch(isConnected, (connected) => {
 	if (!connected) {
