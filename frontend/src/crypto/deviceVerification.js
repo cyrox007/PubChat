@@ -131,11 +131,11 @@ export const verifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUi
 	await putRecord({ deviceUid: verificationKey(state.ownDeviceUid, device.deviceUid), recordType: 'verification', ownDeviceUid: state.ownDeviceUid, peerAccountUid: String(peerAccountUid), peerDeviceUid: device.deviceUid, peerFingerprint: device.fingerprint, safetyNumber: device.safetyNumber, verifiedAt: new Date().toISOString() });
 	return getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
 };
-export const unverifyPeerDevice = async ({ peerAccountUid, deviceUid }) => {
+export const unverifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUid }) => {
 	await ensureRegisteredDevice();
 	const own = await getDeviceRegistrationPayload();
 	await deleteRecord(verificationKey(own.device_uid, deviceUid));
-	return getPeerDeviceSecurity({ ownAccountUid: own.account_uid, peerAccountUid });
+	return getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
 };
 export const acknowledgePeerDirectory = async ({ ownAccountUid, peerAccountUid }) => {
 	const response = await CryptoService.accountDevices(peerAccountUid);
