@@ -130,6 +130,30 @@ export default {
 			commit('setUser', null);
 			commit('setIdentity', null);
 		},
+		async restoreSessionAccess({ commit, dispatch, state }) {
+			// Access tokens deliberately live only in memory. After a full page load
+			// localStorage can tell us that a session probably exists, but it must not
+			// authorize protected views by itself. Rotate the HttpOnly refresh cookie
+			// before Vue Router mounts any authenticated route/component.
+			if (!state.auth) return false;
+			try {
+				const response = await AuthService.refresh();
+				const accessToken = response.data?.access_token;
+				if (!accessToken) throw new Error('refresh_response_missing_access_token');
+				setAccessToken(accessToken);
+				localStorage.removeItem('access_token');
+				if (response.data?.access_restriction !== undefined) {
+					commit('setAccessRestriction', response.data.access_restriction || null);
+				}
+				return true;
+			} catch (error) {
+				if (error.response?.status === 401) {
+					await dispatch('clearUser');
+					return false;
+				}
+				throw error;
+			}
+		},
 		async syncIdentity({ commit, dispatch }) {
 			try {
 				const response = await AuthService.me();
