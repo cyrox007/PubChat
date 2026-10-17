@@ -7,6 +7,7 @@ import './check-public-asset-urls.mjs';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const header = read('../src/components/HeaderComponent/index.vue');
 const app = read('../src/App.vue');
+const spaceNavigation = read('../src/components/Spaces/SpaceContextNavigation.vue');
 const store = read('../src/stores/index.js');
 const notifications = read('../src/stores/notifications.js');
 
@@ -24,6 +25,9 @@ if (header.includes('setInterval(') || header.includes('setTimeout(')) {
 if (!header.includes("store.getters['notifications/unread']")) {
   fail('Header must render unread state from the shared notification store');
 }
+if (header.includes("name: 'space-community'") || header.includes("name: 'space-life'") || header.includes("name: 'space-support'")) {
+  fail('Global header must not own space-specific navigation');
+}
 if (!store.includes('notifications: notificationsStore')) {
   fail('notification Vuex module must be registered');
 }
@@ -38,6 +42,17 @@ if (!app.includes("import CallOverlay from '@/components/Calls/CallOverlay.vue'"
 }
 if (!app.includes('<CallOverlay />')) {
   fail('App shell must mount the global call overlay so call launcher and incoming calls stay available');
+}
+if (!app.includes("import SpaceContextNavigation from '@/components/Spaces/SpaceContextNavigation.vue'")) {
+  fail('App shell must import contextual space navigation');
+}
+if (!app.includes('<SpaceContextNavigation v-if="spaceContextUid"')) {
+  fail('App shell must mount contextual navigation only while browsing a space');
+}
+for (const routeName of ['space', 'space-community', 'space-life', 'space-support']) {
+  if (!spaceNavigation.includes(`name: '${routeName}'`)) {
+    fail(`Space navigation must expose ${routeName}`);
+  }
 }
 if (!notifications.includes('POLL_INTERVAL_MS') || !notifications.includes("NotificationService.sync()")) {
   fail('notification polling implementation must remain centralized in the store');
