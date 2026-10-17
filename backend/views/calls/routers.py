@@ -66,12 +66,22 @@ def _ice_config(account_uid: UUID | str, now: int | None = None) -> dict:
     if not servers and not config.DEBUG:
         raise RuntimeError("Production WebRTC ICE configuration is not configured")
 
+    security = {
+        "media_transport": "webrtc-dtls-srtp",
+        "media_encrypted": True,
+        "signaling_e2ee": False,
+        "device_identity_bound": False,
+        "verified_application_e2ee": False,
+        "claim": "transport-encrypted-unverified",
+    }
     return {
         "ice_servers": servers,
         "ice_transport_policy": "relay" if privacy_mode else "all",
         "credentials_expire_at": expires_at,
-        "media_security": "webrtc-dtls-srtp",
-        "signaling_e2ee": False,
+        # Backward-compatible fields retained for older clients.
+        "media_security": security["media_transport"],
+        "signaling_e2ee": security["signaling_e2ee"],
+        "security": security,
     }
 
 
