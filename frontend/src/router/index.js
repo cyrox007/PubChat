@@ -11,6 +11,7 @@ const router = createRouter({
 		{ path: '/invitations', name: 'invitations', component: () => import('../views/InvitationsView.vue'), meta: { title: 'Приглашения — PubChat', requestAuth: true } },
 		{ path: '/notifications', name: 'notifications', component: () => import('../views/NotificationsView.vue'), meta: { title: 'Напоминания — PubChat', requestAuth: true } },
 		{ path: '/safety', name: 'safety', component: () => import('../views/SafetyCenterView.vue'), meta: { title: 'Безопасность — PubChat', requestAuth: true } },
+		{ path: '/settings/devices', name: 'device-sessions', component: () => import('../views/DeviceSessionsView.vue'), meta: { title: 'Устройства и сеансы — PubChat', requestAuth: true } },
 		{ path: '/safety/restricted', name: 'restricted-safety', component: () => import('../views/RestrictedSafetyCenterView.vue'), meta: { title: 'Ограничение доступа — PubChat', requestAuth: true } },
 		{ path: '/trust-safety', name: 'trust-safety-queue', component: () => import('../views/TrustSafetyQueueView.vue'), meta: { title: 'Trust & Safety — PubChat', requestAuth: true, requiresPlatformModerator: true } },
 		{ path: '/persona-style', name: 'persona-style', component: () => import('../views/PersonaStyleView.vue'), meta: { title: 'Стиль образа — PubChat', requestAuth: true } },

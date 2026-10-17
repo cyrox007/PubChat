@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +19,18 @@ from components.identity.service import (
     build_identity_projection,
     build_public_profile,
     get_account_by_uid,
+    list_account_sessions,
     register_account,
+    revoke_device_sessions,
+    revoke_other_sessions,
     revoke_session,
+    revoke_session_by_uid,
     update_primary_persona,
     update_privacy,
 )
 from components.moderation.account_access import account_access_projection
 from components.moderation.policy import assert_allowed
+from components.realtime import RealtimeUnavailable, realtime_service
 from components.reputation.public import public_reputation_projection, self_reputation_projection
 from components.social.privacy import can_view_profile
 from database import Database
@@ -63,6 +70,32 @@ async def _identity_response(db: AsyncSession, account, tokens: dict | None = No
     return result
 
 
+async def _disconnect_sessions(
+    account_uid: str,
+    *,
+    session_uid: str | None = None,
+    device_uid: str | None = None,
+    except_session_uid: str | None = None,
+) -> None:
+    try:
+        await realtime_service.publish(
+            {
+                "kind": "session_control",
+                "action": "disconnect",
+                "account_uid": str(account_uid),
+                "session_uid": str(session_uid) if session_uid else None,
+                "device_uid": str(device_uid) if device_uid else None,
+                "except_session_uid": str(except_session_uid) if except_session_uid else None,
+                "reason": "Session revoked",
+            }
+        )
+    except RealtimeUnavailable:
+        # The DB revocation is authoritative. If Redis is degraded, existing
+        # sockets cannot be pushed closed immediately, but their next HTTP/ticket
+        # authorization still fails closed against IdentitySession.
+        return
+
+
 def install(app: FastAPI):
     router = APIRouter(prefix="/identity/v2", tags=["identity-v2"])
 
@@ -84,9 +117,6 @@ def install(app: FastAPI):
         response: Response,
         db: AsyncSession = Depends(Database.session_generator),
     ):
-        # A suspended Account may authenticate into a deliberately restricted
-        # session so it can inspect the sanction, appeal it, and log out. Global
-        # auth middleware denies every non-exempt authenticated surface.
         account, tokens = await authenticate_account(db, payload.identifier, payload.password, request)
         _set_refresh_cookie(response, tokens["refresh"])
         return await _identity_response(db, account, tokens)
@@ -116,8 +146,10 @@ def install(app: FastAPI):
         response: Response,
         db: AsyncSession = Depends(Database.session_generator),
     ):
-        await revoke_session(db, request.cookies.get(COOKIE_NAME))
+        revoked = await revoke_session(db, request.cookies.get(COOKIE_NAME))
         response.delete_cookie(COOKIE_NAME, path="/")
+        if revoked:
+            await _disconnect_sessions(str(revoked.account_uid), session_uid=str(revoked.uid))
         return {"status": "ok"}
 
     @router.get("/me")
@@ -128,15 +160,82 @@ def install(app: FastAPI):
         account = await get_account_by_uid(db, current_user["user_uid"])
         return await _identity_response(db, account)
 
+    @router.get("/sessions")
+    async def sessions(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        devices = await list_account_sessions(
+            db,
+            current_user["user_uid"],
+            current_user.get("session_uid"),
+        )
+        return {
+            "status": "ok",
+            "current_session_uid": current_user.get("session_uid"),
+            "current_device_uid": current_user.get("device_uid"),
+            "devices": devices,
+        }
+
+    @router.delete("/sessions/{session_uid}")
+    async def delete_session(
+        session_uid: UUID,
+        response: Response,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        revoked = await revoke_session_by_uid(db, current_user["user_uid"], session_uid)
+        if not revoked:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error_type": "session_not_found"},
+            )
+        is_current = str(session_uid) == str(current_user.get("session_uid") or "")
+        if is_current:
+            response.delete_cookie(COOKIE_NAME, path="/")
+        await _disconnect_sessions(current_user["user_uid"], session_uid=str(session_uid))
+        return {"status": "ok", "current_revoked": is_current}
+
+    @router.delete("/devices/{device_uid}")
+    async def delete_device_sessions(
+        device_uid: UUID,
+        response: Response,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        revoked = await revoke_device_sessions(db, current_user["user_uid"], device_uid)
+        is_current = str(device_uid) == str(current_user.get("device_uid") or "")
+        if is_current:
+            response.delete_cookie(COOKIE_NAME, path="/")
+        if revoked:
+            await _disconnect_sessions(current_user["user_uid"], device_uid=str(device_uid))
+        return {"status": "ok", "revoked": revoked, "current_revoked": is_current and revoked > 0}
+
+    @router.post("/sessions/revoke-others")
+    async def delete_other_sessions(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        current_session_uid = current_user.get("session_uid")
+        if not current_session_uid:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error_type": "session_identity_unavailable"},
+            )
+        revoked = await revoke_other_sessions(db, current_user["user_uid"], current_session_uid)
+        if revoked:
+            await _disconnect_sessions(
+                current_user["user_uid"],
+                except_session_uid=current_session_uid,
+            )
+        return {"status": "ok", "revoked": revoked}
+
     @router.post("/personas/batch")
     async def batch_personas(
         payload: ProfilesBatchRequest,
         _: dict = Depends(auth_middle),
         db: AsyncSession = Depends(Database.session_generator),
     ):
-        # This endpoint is a deliberately small presence projection used by
-        # realtime room/messenger surfaces. Discovery and direct profile access
-        # use the stricter privacy-aware social/profile contracts.
         requested = list(dict.fromkeys(payload.account_uids))
         result = await db.execute(
             select(Persona).where(
@@ -170,8 +269,6 @@ def install(app: FastAPI):
     ):
         account = await get_account_by_uid(db, account_uid)
         if not await can_view_profile(db, current_user["user_uid"], account.uid):
-            # Deliberately return 404 rather than exposing whether the target is
-            # private or has a block relationship with the viewer.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error_type": "profile_not_available"},
@@ -196,8 +293,6 @@ def install(app: FastAPI):
         current_user: dict = Depends(auth_middle),
         db: AsyncSession = Depends(Database.session_generator),
     ):
-        # Safety/privacy controls remain available for ordinary capability restrictions,
-        # but account.access itself is caught earlier by auth_middle.
         account = await get_account_by_uid(db, current_user["user_uid"])
         return {"status": "ok", **(await update_privacy(db, account, payload))}
 

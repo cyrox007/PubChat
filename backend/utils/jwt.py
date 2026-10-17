@@ -13,6 +13,17 @@ def _security_ready():
     config.ensure_security_settings()
 
 
+def _identity_claims(payload: Dict[str, Any]) -> Dict[str, str]:
+    claims: Dict[str, str] = {}
+    session_uid = payload.get("session_uid")
+    device_uid = payload.get("device_uid")
+    if session_uid:
+        claims["sid"] = str(session_uid)
+    if device_uid:
+        claims["did"] = str(device_uid)
+    return claims
+
+
 def create_access_token(payload: Dict[str, Any]) -> str:
     """Generate a signed short-lived access token."""
     _security_ready()
@@ -28,6 +39,7 @@ def create_access_token(payload: Dict[str, Any]) -> str:
             "exp": datetime.now(timezone.utc)
             + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES),
             "type": "access",
+            **_identity_claims(payload),
         },
         config.JWT_ACCESS_SECRET_KEY,
         algorithm=config.JWT_ALGORITHM,
@@ -49,10 +61,35 @@ def create_refresh_token(payload: Dict[str, Any]) -> str:
             "exp": datetime.now(timezone.utc)
             + timedelta(days=config.REFRESH_TOKEN_EXPIRE_DAYS),
             "type": "refresh",
+            **_identity_claims(payload),
         },
         config.JWT_REFRESH_SECRET_KEY,
         algorithm=config.JWT_ALGORITHM,
     )
+
+
+def _validated_identity(payload: Dict[str, Any], expected_type: str) -> Optional[Dict[str, Any]]:
+    if payload.get("type") != expected_type:
+        logger.warning("Попытка использовать токен неверного типа")
+        return None
+
+    sub = payload.get("sub")
+    if not isinstance(sub, str):
+        logger.warning("Subject must be a string")
+        return None
+
+    result: Dict[str, Any] = {"user_uid": sub}
+    session_uid = payload.get("sid")
+    device_uid = payload.get("did")
+    if session_uid is not None:
+        if not isinstance(session_uid, str):
+            return None
+        result["session_uid"] = session_uid
+    if device_uid is not None:
+        if not isinstance(device_uid, str):
+            return None
+        result["device_uid"] = device_uid
+    return result
 
 
 def validate_access_token(token: str) -> Optional[Dict[str, Any]]:
@@ -72,17 +109,7 @@ def validate_access_token(token: str) -> Optional[Dict[str, Any]]:
             algorithms=[config.JWT_ALGORITHM],
             options={"verify_exp": True},
         )
-
-        if payload.get("type") != "access":
-            logger.warning("Попытка использовать не access-токен")
-            return None
-
-        sub = payload.get("sub")
-        if not isinstance(sub, str):
-            logger.warning("Subject must be a string")
-            return None
-
-        return {"user_uid": sub}
+        return _validated_identity(payload, "access")
 
     except jwt.ExpiredSignatureError:
         logger.info("Истек срок действия access-токена")
@@ -106,17 +133,7 @@ def validate_refresh_token(token: str) -> Optional[Dict[str, Any]]:
             algorithms=[config.JWT_ALGORITHM],
             options={"verify_exp": True},
         )
-
-        if payload.get("type") != "refresh":
-            logger.warning("Попытка использовать не refresh-токен")
-            return None
-
-        sub = payload.get("sub")
-        if not isinstance(sub, str):
-            logger.warning("Subject must be a string")
-            return None
-
-        return {"user_uid": sub}
+        return _validated_identity(payload, "refresh")
 
     except jwt.ExpiredSignatureError:
         logger.info("Истек срок действия refresh-токена")

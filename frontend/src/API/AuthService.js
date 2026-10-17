@@ -21,6 +21,22 @@ export default class AuthService {
 		return $api.get('/identity/v2/me');
 	}
 
+	static async sessions() {
+		return $api.get('/identity/v2/sessions');
+	}
+
+	static async revokeSession(sessionUid) {
+		return $api.delete(`/identity/v2/sessions/${sessionUid}`);
+	}
+
+	static async revokeDevice(deviceUid) {
+		return $api.delete(`/identity/v2/devices/${deviceUid}`);
+	}
+
+	static async revokeOtherSessions() {
+		return $api.post('/identity/v2/sessions/revoke-others');
+	}
+
 	static async getProfile(accountUid) {
 		return $api.get(`/identity/v2/profiles/${accountUid}`);
 	}

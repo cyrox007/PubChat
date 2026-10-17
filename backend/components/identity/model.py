@@ -88,6 +88,7 @@ class IdentitySession(Database.Base):
 
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False, index=True)
+    device_uid = Column(UUID(as_uuid=True), nullable=False, default=uuid4)
     refresh_token_hash = Column(String(64), nullable=False)
     device_label = Column(String(120), nullable=True)
     user_agent = Column(Text, nullable=True)
@@ -102,6 +103,7 @@ class IdentitySession(Database.Base):
     __table_args__ = (
         UniqueConstraint("refresh_token_hash", name="identity_sessions_refresh_token_hash_key"),
         Index("ix_identity_sessions_refresh_token_hash", "refresh_token_hash", unique=True),
+        Index("ix_identity_sessions_account_device", "account_uid", "device_uid"),
     )
 
 

@@ -4,7 +4,7 @@ from hashlib import sha256
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.model import UserDevice
@@ -25,6 +25,8 @@ from utils.jwt import validate_refresh_token
 from utils.password import hash_password, verify_password
 from utils.user_agents import parse_user_agent
 
+DEVICE_ID_HEADER = "X-PubChat-Device-ID"
+
 
 def _token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
@@ -34,6 +36,17 @@ def _client_metadata(request: Request) -> tuple[str, str, dict]:
     ip_address = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("User-Agent", "unknown")
     return ip_address, user_agent, parse_user_agent(user_agent)
+
+
+def _client_device_uid(request: Request) -> UUID:
+    raw = str(request.headers.get(DEVICE_ID_HEADER) or "").strip()
+    try:
+        return UUID(raw)
+    except (ValueError, TypeError, AttributeError):
+        # A device id is a grouping hint, not an authentication credential.
+        # Invalid/missing values get a fresh server-generated id instead of
+        # weakening the session boundary.
+        return uuid4()
 
 
 def _normalize_identifier(value: str) -> list[str]:
@@ -162,13 +175,21 @@ async def build_public_profile(db: AsyncSession, account: Account, viewer_uid: s
 
 
 async def _issue_session(db: AsyncSession, account: Account, request: Request) -> dict:
-    tokens = generate_tokens(str(account.uid))
+    session_uid = uuid4()
+    device_uid = _client_device_uid(request)
+    tokens = generate_tokens(
+        str(account.uid),
+        session_uid=str(session_uid),
+        device_uid=str(device_uid),
+    )
     ip_address, user_agent, device_info = _client_metadata(request)
     expires_at = datetime.utcnow() + timedelta(days=config.REFRESH_TOKEN_EXPIRE_DAYS)
 
     db.add(
         IdentitySession(
+            uid=session_uid,
             account_uid=account.uid,
+            device_uid=device_uid,
             refresh_token_hash=_token_hash(tokens["refresh"]),
             device_label=device_info.get("device") or device_info.get("device_type"),
             user_agent=user_agent,
@@ -312,8 +333,14 @@ async def rotate_session(db: AsyncSession, refresh_token: str, request: Request)
     account = await db.get(Account, identity_session.account_uid)
     if not account or account.status != "active" or str(account.uid) != payload.get("user_uid"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error_type": "account_unavailable"})
+    if payload.get("session_uid") and payload["session_uid"] != str(identity_session.uid):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"error_type": "session_mismatch"})
 
-    tokens = generate_tokens(str(account.uid))
+    tokens = generate_tokens(
+        str(account.uid),
+        session_uid=str(identity_session.uid),
+        device_uid=str(identity_session.device_uid),
+    )
     identity_session.refresh_token_hash = _token_hash(tokens["refresh"])
     identity_session.last_seen_at = datetime.utcnow()
     identity_session.expires_at = datetime.utcnow() + timedelta(days=config.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -333,9 +360,129 @@ async def rotate_session(db: AsyncSession, refresh_token: str, request: Request)
     return account, tokens
 
 
-async def revoke_session(db: AsyncSession, refresh_token: str | None) -> None:
+async def active_identity_session(
+    db: AsyncSession,
+    account_uid: UUID | str,
+    session_uid: UUID | str,
+) -> IdentitySession | None:
+    try:
+        account_id = UUID(str(account_uid))
+        session_id = UUID(str(session_uid))
+    except (ValueError, TypeError):
+        return None
+    result = await db.execute(
+        select(IdentitySession).where(
+            IdentitySession.uid == session_id,
+            IdentitySession.account_uid == account_id,
+            IdentitySession.revoked_at.is_(None),
+            IdentitySession.expires_at > datetime.utcnow(),
+        ).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_account_sessions(
+    db: AsyncSession,
+    account_uid: UUID | str,
+    current_session_uid: UUID | str | None = None,
+) -> list[dict]:
+    account_id = UUID(str(account_uid))
+    current = str(current_session_uid or "")
+    result = await db.execute(
+        select(IdentitySession).where(
+            IdentitySession.account_uid == account_id,
+            IdentitySession.revoked_at.is_(None),
+            IdentitySession.expires_at > datetime.utcnow(),
+        ).order_by(IdentitySession.last_seen_at.desc(), IdentitySession.created_at.desc())
+    )
+    groups: dict[str, dict] = {}
+    for session in result.scalars().all():
+        device_uid = str(session.device_uid)
+        group = groups.setdefault(
+            device_uid,
+            {
+                "device_uid": device_uid,
+                "device_label": session.device_label or "Неизвестное устройство",
+                "user_agent": session.user_agent,
+                "last_seen_at": session.last_seen_at.isoformat() if session.last_seen_at else None,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "current": False,
+                "sessions": [],
+            },
+        )
+        is_current = str(session.uid) == current
+        group["current"] = group["current"] or is_current
+        if session.last_seen_at and (not group["last_seen_at"] or session.last_seen_at.isoformat() > group["last_seen_at"]):
+            group["last_seen_at"] = session.last_seen_at.isoformat()
+        group["sessions"].append(
+            {
+                "uid": str(session.uid),
+                "current": is_current,
+                "ip_address": session.ip_address,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "last_seen_at": session.last_seen_at.isoformat() if session.last_seen_at else None,
+                "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+            }
+        )
+    return list(groups.values())
+
+
+async def revoke_session_by_uid(
+    db: AsyncSession,
+    account_uid: UUID | str,
+    session_uid: UUID | str,
+) -> IdentitySession | None:
+    session = await active_identity_session(db, account_uid, session_uid)
+    if not session:
+        return None
+    session.revoked_at = datetime.utcnow()
+    await db.commit()
+    return session
+
+
+async def revoke_device_sessions(
+    db: AsyncSession,
+    account_uid: UUID | str,
+    device_uid: UUID | str,
+) -> int:
+    account_id = UUID(str(account_uid))
+    device_id = UUID(str(device_uid))
+    result = await db.execute(
+        update(IdentitySession)
+        .where(
+            IdentitySession.account_uid == account_id,
+            IdentitySession.device_uid == device_id,
+            IdentitySession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.utcnow())
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
+async def revoke_other_sessions(
+    db: AsyncSession,
+    account_uid: UUID | str,
+    current_session_uid: UUID | str,
+) -> int:
+    account_id = UUID(str(account_uid))
+    current_id = UUID(str(current_session_uid))
+    result = await db.execute(
+        update(IdentitySession)
+        .where(
+            IdentitySession.account_uid == account_id,
+            IdentitySession.uid != current_id,
+            IdentitySession.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.utcnow())
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
+async def revoke_session(db: AsyncSession, refresh_token: str | None) -> IdentitySession | None:
     if not refresh_token:
-        return
+        return None
 
     result = await db.execute(
         select(IdentitySession).where(
@@ -355,6 +502,7 @@ async def revoke_session(db: AsyncSession, refresh_token: str | None) -> None:
         legacy_device.is_active = False
 
     await db.commit()
+    return identity_session
 
 
 async def get_account_by_uid(db: AsyncSession, account_uid: str) -> Account:

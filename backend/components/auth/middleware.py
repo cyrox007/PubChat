@@ -1,5 +1,10 @@
-from fastapi import HTTPException, Request, status
+from datetime import datetime
+from uuid import UUID
 
+from fastapi import HTTPException, Request, status
+from sqlalchemy import select
+
+from components.identity.model import IdentitySession
 from components.moderation.account_access import assert_http_account_access
 from database import Database
 from utils.jwt import validate_access_token
@@ -27,13 +32,37 @@ async def auth_middle(request: Request):
 
     request.state.user = user_data
     request.state.user_uid = user_data["user_uid"]
+    request.state.session_uid = user_data.get("session_uid")
+    request.state.device_uid = user_data.get("device_uid")
 
-    # Access JWTs are intentionally stateless and short-lived, so a platform
-    # suspension cannot rely only on refresh-token revocation. Every authenticated
-    # HTTP request re-checks the durable account.access restriction. The narrow
-    # exemption list keeps Safety/Appeal and identity bootstrap reachable.
     session = await Database.get_session()
     try:
+        # Identity v2 access tokens are session-bound. This makes per-session
+        # revocation effective immediately instead of waiting for JWT expiry.
+        # Legacy tokens without sid remain accepted during compatibility sunset.
+        if user_data.get("session_uid"):
+            try:
+                session_uid = UUID(str(user_data["session_uid"]))
+                account_uid = UUID(str(user_data["user_uid"]))
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"status": "bad", "error_type": "invalid_session"},
+                ) from exc
+            result = await session.execute(
+                select(IdentitySession.uid).where(
+                    IdentitySession.uid == session_uid,
+                    IdentitySession.account_uid == account_uid,
+                    IdentitySession.revoked_at.is_(None),
+                    IdentitySession.expires_at > datetime.utcnow(),
+                ).limit(1)
+            )
+            if result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"status": "bad", "error_type": "session_revoked"},
+                )
+
         await assert_http_account_access(
             session,
             request,
