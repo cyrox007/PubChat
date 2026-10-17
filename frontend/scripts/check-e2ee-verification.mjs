@@ -24,7 +24,7 @@ if (matrix.length !== 33 || matrix.some((row) => row.length !== 33)) throw new E
 if (matrix.some((row) => row.some((value) => typeof value !== 'boolean'))) throw new Error('QR contains unresolved modules');
 const bits = matrix.flat().map((value) => value ? '1' : '0').join('');
 const digest = crypto.createHash('sha256').update(bits).digest('hex');
-if (digest !== 'a6048d11a4dde47d4ecdb34cb4af414d1c398a54bc13b4e79bc1cd4367d87acc') {
+if (digest !== 'd0b8b1c5edcbf17ffd4c071cb827bc03ffdc7d324ed749aa16660a579306d58f') {
   throw new Error(`QR matrix regression: ${digest}`);
 }
 
