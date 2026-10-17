@@ -24,4 +24,8 @@ export default class AdminService {
 	static async getPostgresPoolMetrics() {
 		return $api.get('/admin/operations/postgres-pool');
 	}
+
+	static async getHttpMetrics() {
+		return $api.get('/admin/operations/http');
+	}
 }
