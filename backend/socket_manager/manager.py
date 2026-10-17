@@ -52,8 +52,25 @@ class ConnectionManager:
             self.connection_ids[websocket] = connection_id
         return connection_id
 
+    @staticmethod
+    def _session_control_matches(websocket: WebSocket, event: dict) -> bool:
+        state = getattr(websocket, "state", None)
+        if not state or str(getattr(state, "account_uid", "")) != str(event.get("account_uid") or ""):
+            return False
+        socket_session = str(getattr(state, "session_uid", "") or "")
+        socket_device = str(getattr(state, "device_uid", "") or "")
+        except_session = str(event.get("except_session_uid") or "")
+        if except_session and socket_session == except_session:
+            return False
+        target_session = str(event.get("session_uid") or "")
+        target_device = str(event.get("device_uid") or "")
+        if target_session:
+            return socket_session == target_session
+        if target_device:
+            return socket_device == target_device
+        return True
+
     async def _send_json(self, websocket: WebSocket, message: dict) -> None:
-        """Bound a direct/fallback socket write by the configured send timeout."""
         await asyncio.wait_for(
             websocket.send_json(message),
             timeout=config.REALTIME_SEND_TIMEOUT_SECONDS,
@@ -230,8 +247,46 @@ class ConnectionManager:
             if not self._enqueue_json(websocket, message):
                 logger.warning("Realtime user frame rejected by outbound queue: user=%s", user_uid)
 
+    async def _disconnect_matching_sessions(self, event: dict) -> None:
+        reason = str(event.get("reason") or "Session revoked")[:120]
+        matched: set[WebSocket] = set()
+
+        for room_uid, connections in list(self.room_connections.items()):
+            for websocket, _ in list(connections):
+                if websocket in matched or not self._session_control_matches(websocket, event):
+                    continue
+                matched.add(websocket)
+                try:
+                    await asyncio.wait_for(
+                        websocket.close(code=4401, reason=reason),
+                        timeout=config.REALTIME_SEND_TIMEOUT_SECONDS,
+                    )
+                except Exception:
+                    pass
+                finally:
+                    await self.disconnect(websocket, room_uid)
+
+        for _, connections in list(self.user_connections.items()):
+            for websocket in list(connections):
+                if websocket in matched or not self._session_control_matches(websocket, event):
+                    continue
+                matched.add(websocket)
+                try:
+                    await asyncio.wait_for(
+                        websocket.close(code=4401, reason=reason),
+                        timeout=config.REALTIME_SEND_TIMEOUT_SECONDS,
+                    )
+                except Exception:
+                    pass
+                finally:
+                    await self.disconnect(websocket)
+
     async def _handle_bus_event(self, event: dict) -> None:
         kind = event.get("kind")
+        if kind == "session_control" and event.get("action") == "disconnect":
+            await self._disconnect_matching_sessions(event)
+            return
+
         if kind == "room":
             try:
                 room_uid = UUID(event["room_uid"])
@@ -300,8 +355,6 @@ class ConnectionManager:
                 logger.warning("Realtime frame rejected by device outbound queue")
             return
 
-        # Authentication/early setup paths may intentionally send before a pump
-        # exists. Keep those writes bounded instead of silently dropping them.
         try:
             await self._send_json(websocket, message)
         except Exception:
