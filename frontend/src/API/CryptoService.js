@@ -1,4 +1,5 @@
 import $api from '.';
+import MessengerService from '@/API/MessengerService';
 
 export default class CryptoService {
 	static registerDevice(payload) {
@@ -23,7 +24,17 @@ export default class CryptoService {
 		return $api.delete(`/crypto/v1/devices/${deviceUid}`);
 	}
 
-	static accountDevices(accountUid) {
+	static async accountDevices(accountUid) {
+		const policyResponse = await MessengerService.getConversationEncryption(accountUid);
+		const policy = policyResponse.data?.encryption || {};
+		if (policy.effective_mode === 'plaintext') {
+			return { data: { status: 'ok', account_uid: accountUid, devices: [], encryption: policy } };
+		}
+		if (policy.effective_mode === 'e2ee' && Number(policy.peer_crypto_devices || 0) < 1) {
+			const error = new Error('e2ee_devices_not_ready');
+			error.code = 'e2ee_devices_not_ready';
+			throw error;
+		}
 		return $api.get(`/crypto/v1/accounts/${accountUid}/devices`);
 	}
 
