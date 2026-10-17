@@ -4,6 +4,7 @@ import router from './router';
 import store from './stores';
 import CallOverlay from '@/components/Calls/CallOverlay.vue';
 import ConversationEncryptionControl from '@/components/Messenger/ConversationEncryptionControl.vue';
+import MessengerSecurityPanel from '@/components/Messenger/MessengerSecurityPanel.vue';
 import { registerPubChatServiceWorker } from '@/pwa/registerServiceWorker';
 
 import "@/assets/main.css";
@@ -44,6 +45,14 @@ const bootstrap = async () => {
 	encryptionApp.use(store);
 	encryptionApp.use(router);
 	encryptionApp.mount(encryptionRoot);
+
+	const securityRoot = document.createElement('div');
+	securityRoot.id = 'pubchat-messenger-security-root';
+	document.body.appendChild(securityRoot);
+	const securityApp = createApp(MessengerSecurityPanel);
+	securityApp.use(store);
+	securityApp.use(router);
+	securityApp.mount(securityRoot);
 
 	window.addEventListener('pubchat:account-access-restricted', () => {
 		if (router.currentRoute.value.name !== 'restricted-safety') {
