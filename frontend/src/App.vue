@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 import HeaderComponent from './components/HeaderComponent/index.vue';
+import CallOverlay from '@/components/Calls/CallOverlay.vue';
 import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vue';
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
@@ -231,6 +232,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 	<div class="app-shell">
 		<ReplyNotifications />
 		<MessageNotifications />
+		<CallOverlay />
 		<HeaderComponent />
 		<PwaInstallPrompt />
 		<PwaUpdateNotice />
