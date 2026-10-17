@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
 
-from settings import config
+
+SAMPLE_SIZE = max(100, min(10000, int(os.getenv("HTTP_METRICS_SAMPLE_SIZE", "2000"))))
+MIN_HEALTH_SAMPLE = max(
+    1,
+    min(SAMPLE_SIZE, int(os.getenv("HTTP_METRICS_MIN_HEALTH_SAMPLE", "20"))),
+)
+ALERT_5XX_PERCENT = max(0.1, min(100.0, float(os.getenv("HTTP_ALERT_5XX_PERCENT", "5"))))
+ALERT_P95_MS = max(50.0, min(60000.0, float(os.getenv("HTTP_ALERT_P95_MS", "2000"))))
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,8 +26,18 @@ class HttpSample:
 class HttpRuntimeMetrics:
     """Bounded, privacy-minimal HTTP metrics for one application process."""
 
-    def __init__(self, sample_size: int | None = None) -> None:
-        self._sample_size = max(1, int(sample_size or config.HTTP_METRICS_SAMPLE_SIZE))
+    def __init__(
+        self,
+        sample_size: int | None = None,
+        *,
+        min_health_sample: int | None = None,
+        alert_5xx_percent: float | None = None,
+        alert_p95_ms: float | None = None,
+    ) -> None:
+        self._sample_size = max(1, int(sample_size or SAMPLE_SIZE))
+        self._min_health_sample = max(1, min(self._sample_size, int(min_health_sample or MIN_HEALTH_SAMPLE)))
+        self._alert_5xx_percent = max(0.1, min(100.0, float(alert_5xx_percent or ALERT_5XX_PERCENT)))
+        self._alert_p95_ms = max(1.0, float(alert_p95_ms or ALERT_P95_MS))
         self._samples: deque[HttpSample] = deque(maxlen=self._sample_size)
         self._started_monotonic = time.monotonic()
         self._total_requests = 0
@@ -83,12 +101,12 @@ class HttpRuntimeMetrics:
             else 0.0
         )
         p95_ms = self._percentile(latencies, 0.95)
-        enough_for_health = sample_count >= config.HTTP_METRICS_MIN_HEALTH_SAMPLE
+        enough_for_health = sample_count >= self._min_health_sample
         near_error_threshold = bool(
-            enough_for_health and error_5xx_percent >= config.HTTP_ALERT_5XX_PERCENT
+            enough_for_health and error_5xx_percent >= self._alert_5xx_percent
         )
         near_latency_threshold = bool(
-            enough_for_health and p95_ms >= config.HTTP_ALERT_P95_MS
+            enough_for_health and p95_ms >= self._alert_p95_ms
         )
 
         return {
@@ -110,9 +128,9 @@ class HttpRuntimeMetrics:
                 },
             },
             "thresholds": {
-                "min_health_sample": config.HTTP_METRICS_MIN_HEALTH_SAMPLE,
-                "alert_5xx_percent": config.HTTP_ALERT_5XX_PERCENT,
-                "alert_p95_ms": config.HTTP_ALERT_P95_MS,
+                "min_health_sample": self._min_health_sample,
+                "alert_5xx_percent": self._alert_5xx_percent,
+                "alert_p95_ms": self._alert_p95_ms,
             },
             "health_evaluable": enough_for_health,
             "near_error_threshold": near_error_threshold,
