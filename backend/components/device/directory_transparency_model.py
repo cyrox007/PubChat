@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from database import Database
@@ -26,7 +26,7 @@ class DeviceDirectoryEvent(Database.Base):
     sequence = Column(BigInteger, nullable=False)
     event_type = Column(String(24), nullable=False)
     device_uid = Column(UUID(as_uuid=True), nullable=True)
-    key_version = Column(String(16), nullable=True)
+    key_version = Column(Integer, nullable=True)
     fingerprint = Column(String(64), nullable=True)
     identity_signing_key = Column(Text, nullable=True)
     identity_dh_key = Column(Text, nullable=True)
