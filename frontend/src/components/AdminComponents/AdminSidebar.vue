@@ -1,22 +1,22 @@
 <template>
-	<aside class="admin-sidebar" :class="{ open }">
+	<aside id="admin-sidebar" class="admin-sidebar" :class="{ open }" :aria-hidden="open ? 'false' : undefined">
 		<div class="sidebar-heading">
 			<div>
 				<strong>Администрирование</strong>
 				<span>PubChat</span>
 			</div>
 			<button class="close-button" type="button" aria-label="Закрыть меню" @click="$emit('close')">
-				<i class="fas fa-times"></i>
+				<i class="fas fa-times" aria-hidden="true"></i>
 			</button>
 		</div>
 
-		<nav>
+		<nav aria-label="Разделы администрирования">
 			<router-link :to="{ name: 'AdminDashboardHome' }" class="sidebar-link" active-class="active" @click="$emit('navigate')">
-				<i class="fas fa-tachometer-alt"></i>
+				<i class="fas fa-tachometer-alt" aria-hidden="true"></i>
 				<span>Консоль</span>
 			</router-link>
 			<router-link :to="{ name: 'AdminProfileList' }" class="sidebar-link" active-class="active" @click="$emit('navigate')">
-				<i class="fas fa-users"></i>
+				<i class="fas fa-users" aria-hidden="true"></i>
 				<span>Пользователи</span>
 			</router-link>
 		</nav>
@@ -70,6 +70,7 @@ defineEmits(['close', 'navigate']);
 	border-radius: var(--ui-radius-md);
 	background: var(--ui-surface);
 	color: var(--ui-text);
+	cursor: pointer;
 }
 
 nav {
@@ -89,7 +90,8 @@ nav {
 	transition: background var(--ui-motion-fast) var(--ui-ease), color var(--ui-motion-fast) var(--ui-ease);
 }
 
-.sidebar-link:hover {
+.sidebar-link:hover,
+.sidebar-link:focus-visible {
 	background: var(--ui-surface-muted);
 	color: var(--ui-text);
 }
@@ -108,23 +110,63 @@ nav {
 @media (max-width: 900px) {
 	.admin-sidebar {
 		position: fixed;
-		inset: 0 auto 0 0;
-		z-index: 65;
-		width: min(82vw, 300px);
-		height: 100dvh;
-		padding-top: max(var(--ui-space-4), env(safe-area-inset-top));
+		top: var(--ui-mobile-topbar-height);
+		bottom: calc(var(--ui-mobile-nav-height) + env(safe-area-inset-bottom));
+		left: 0;
+		z-index: 126;
+		width: min(86vw, 320px);
+		height: auto;
+		padding: var(--ui-space-3);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		background: var(--ui-surface-raised);
+		border-right: 1px solid var(--ui-border);
+		border-radius: 0 var(--ui-radius-xl) var(--ui-radius-xl) 0;
 		transform: translateX(-105%);
-		transition: transform var(--ui-motion-medium) var(--ui-ease-out);
+		visibility: hidden;
+		transition:
+			transform var(--ui-motion-medium) var(--ui-ease-out),
+			visibility 0s linear var(--ui-motion-medium);
 		box-shadow: var(--ui-shadow-lg);
 	}
 
 	.admin-sidebar.open {
 		transform: translateX(0);
+		visibility: visible;
+		transition-delay: 0s;
+	}
+
+	.sidebar-heading {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		margin: calc(-1 * var(--ui-space-3)) calc(-1 * var(--ui-space-3)) var(--ui-space-2);
+		padding: var(--ui-space-4) var(--ui-space-4) var(--ui-space-3);
+		background: var(--ui-surface-raised);
+		border-bottom: 1px solid var(--ui-border);
 	}
 
 	.close-button {
 		display: inline-grid;
 		place-items: center;
+		flex: 0 0 38px;
+	}
+
+	.sidebar-link {
+		min-height: 48px;
+		font-size: var(--ui-text-sm);
+	}
+}
+
+@media (max-width: 420px) {
+	.admin-sidebar {
+		width: min(90vw, 300px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.admin-sidebar {
+		transition: none;
 	}
 }
 </style>
