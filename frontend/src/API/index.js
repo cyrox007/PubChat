@@ -1,6 +1,7 @@
 import axios from "axios";
 import store from "@/stores";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/API/session";
+import { AUTH_DEVICE_HEADER, getAuthDeviceId } from '@/API/authDevice';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
@@ -44,7 +45,7 @@ export const ensureCsrfToken = async (force = false) => {
 
     csrfPromise = axios.get(`${API_BASE_URL}/csrf/get`, {
         withCredentials: true,
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: { 'Cache-Control': 'no-cache', [AUTH_DEVICE_HEADER]: getAuthDeviceId() },
     }).then((response) => {
         const token = response.data?.csrf_token;
         if (!token || typeof token !== 'string') {
@@ -89,16 +90,16 @@ const processQueue = (error = null, accessToken = null) => {
 $api.interceptors.request.use(async (requestConfig) => {
     const config = requestConfig;
     const method = String(config.method || 'get').toLowerCase();
+    config.headers = config.headers || {};
+    config.headers[AUTH_DEVICE_HEADER] = getAuthDeviceId();
 
     if (UNSAFE_METHODS.has(method)) {
         const token = await ensureCsrfToken();
-        config.headers = config.headers || {};
         config.headers[CSRF_HEADER_NAME] = token;
     }
 
     const accessToken = getAccessToken();
     if (accessToken) {
-        config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${accessToken}`;
     }
     return config;
@@ -157,7 +158,10 @@ $api.interceptors.response.use(
                     {},
                     {
                         withCredentials: true,
-                        headers: { [CSRF_HEADER_NAME]: csrf },
+                        headers: {
+                            [CSRF_HEADER_NAME]: csrf,
+                            [AUTH_DEVICE_HEADER]: getAuthDeviceId(),
+                        },
                     }
                 );
                 const accessToken = refreshResponse.data.access_token;
