@@ -1,6 +1,10 @@
 import argparse
 import asyncio
 
+# Import settings first so backend/.env is loaded before the E2EE storage module
+# resolves E2EE_ATTACHMENT_STORAGE_ROOT in this standalone worker process.
+from settings import config  # noqa: F401
+
 from components.message.e2ee_attachment_retention import (
     cleanup_e2ee_attachment_storage,
     orphan_grace_hours,
