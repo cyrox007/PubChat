@@ -1,5 +1,3 @@
-import CryptoService from '@/API/CryptoService';
-
 const DB_NAME = 'pubchat-e2ee-sessions-v1';
 const DB_VERSION = 1;
 const STORE = 'pins';
@@ -42,9 +40,9 @@ const writeRecord = async (record) => {
 const normalizedCheckpoint = (checkpoint) => {
 	if (!checkpoint || checkpoint.version !== VERSION) return null;
 	const sequence = Number(checkpoint.sequence);
-	const eventHash = String(checkpoint.event_hash || '');
-	const previousHash = String(checkpoint.previous_hash || '');
-	const directoryHash = String(checkpoint.directory_hash || '');
+	const eventHash = String(checkpoint.event_hash || checkpoint.eventHash || '');
+	const previousHash = String(checkpoint.previous_hash || checkpoint.previousHash || '');
+	const directoryHash = String(checkpoint.directory_hash || checkpoint.directoryHash || '');
 	if (!Number.isSafeInteger(sequence) || sequence < 1) return null;
 	if (!/^[0-9a-f]{64}$/.test(eventHash) || !/^[0-9a-f]{64}$/.test(previousHash) || !/^[0-9a-f]{64}$/.test(directoryHash)) return null;
 	return { version: VERSION, sequence, eventHash, previousHash, directoryHash };
@@ -52,15 +50,15 @@ const normalizedCheckpoint = (checkpoint) => {
 
 const conflict = (reason, stored, current) => ({ ok: false, reason, stored, current });
 
-const verifyForwardChain = async ({ accountUid, stored, current }) => {
+const verifyForwardChain = async ({ stored, current, historyLoader }) => {
 	const gap = current.sequence - stored.sequence;
 	if (gap > MAX_HISTORY_GAP) return conflict('history_gap_too_large', stored, current);
+	if (typeof historyLoader !== 'function') return conflict('history_loader_unavailable', stored, current);
 	let cursor = stored.sequence;
 	let expectedPrevious = stored.eventHash;
 	while (cursor < current.sequence) {
-		const response = await CryptoService.directoryHistory(accountUid, cursor, Math.min(200, current.sequence - cursor));
-		const events = response.data?.events || [];
-		if (!events.length) return conflict('history_incomplete', stored, current);
+		const events = await historyLoader(cursor, Math.min(200, current.sequence - cursor));
+		if (!Array.isArray(events) || !events.length) return conflict('history_incomplete', stored, current);
 		for (const event of events) {
 			const sequence = Number(event.sequence);
 			const eventHash = String(event.event_hash || '');
@@ -78,7 +76,7 @@ const verifyForwardChain = async ({ accountUid, stored, current }) => {
 	return { ok: true };
 };
 
-export const observeDirectoryCheckpoint = async ({ accountUid, checkpoint, requireCheckpoint = true }) => {
+export const observeDirectoryCheckpoint = async ({ accountUid, checkpoint, requireCheckpoint = true, historyLoader = null }) => {
 	const current = normalizedCheckpoint(checkpoint);
 	if (!current) {
 		if (!requireCheckpoint && !checkpoint) return { ok: true, firstObservation: false, checkpoint: null };
@@ -86,13 +84,7 @@ export const observeDirectoryCheckpoint = async ({ accountUid, checkpoint, requi
 	}
 	const key = keyFor(accountUid);
 	const storedRecord = await readRecord(key);
-	const stored = storedRecord ? normalizedCheckpoint({
-		version: storedRecord.version,
-		sequence: storedRecord.sequence,
-		event_hash: storedRecord.eventHash,
-		previous_hash: storedRecord.previousHash,
-		directory_hash: storedRecord.directoryHash,
-	}) : null;
+	const stored = storedRecord ? normalizedCheckpoint(storedRecord) : null;
 	if (!stored) {
 		await writeRecord({ deviceUid: key, recordType: 'directory-checkpoint', accountUid: String(accountUid), ...current, observedAt: new Date().toISOString() });
 		return { ok: true, firstObservation: true, checkpoint: current };
@@ -102,14 +94,14 @@ export const observeDirectoryCheckpoint = async ({ accountUid, checkpoint, requi
 		if (current.eventHash !== stored.eventHash || current.directoryHash !== stored.directoryHash) return conflict('checkpoint_fork', stored, current);
 		return { ok: true, firstObservation: false, checkpoint: current };
 	}
-	const continuity = await verifyForwardChain({ accountUid, stored, current });
+	const continuity = await verifyForwardChain({ stored, current, historyLoader });
 	if (!continuity.ok) return continuity;
 	await writeRecord({ deviceUid: key, recordType: 'directory-checkpoint', accountUid: String(accountUid), ...current, observedAt: new Date().toISOString() });
 	return { ok: true, firstObservation: false, checkpoint: current };
 };
 
-export const assertDirectoryCheckpoint = async ({ accountUid, checkpoint, requireCheckpoint = true }) => {
-	const result = await observeDirectoryCheckpoint({ accountUid, checkpoint, requireCheckpoint });
+export const assertDirectoryCheckpoint = async (options) => {
+	const result = await observeDirectoryCheckpoint(options);
 	if (result.ok) return result;
 	const error = new Error('e2ee_directory_transparency_conflict');
 	error.code = 'e2ee_directory_transparency_conflict';
