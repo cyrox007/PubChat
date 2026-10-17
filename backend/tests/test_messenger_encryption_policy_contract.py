@@ -41,7 +41,10 @@ class MessengerEncryptionPolicyContractTests(unittest.TestCase):
         self.assertIn("assert_e2ee_allowed", encrypted_source)
 
     def test_policy_routes_are_installed(self):
-        paths = {(route.path, tuple(sorted(route.methods or []))) for route in create_app().routes}
+        paths = {
+            (route.path, tuple(sorted(getattr(route, "methods", None) or [])))
+            for route in create_app().routes
+        }
         self.assertTrue(any(path == "/messenger/conversations/{peer_uid}/encryption" and "GET" in methods for path, methods in paths))
         self.assertTrue(any(path == "/messenger/conversations/{peer_uid}/encryption" and "PUT" in methods for path, methods in paths))
 
