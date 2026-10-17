@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import os
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import FileResponse
 
@@ -18,7 +19,7 @@ MAX_E2EE_ATTACHMENT_CIPHERTEXT_BYTES = 25 * 1024 * 1024 + 16
 E2EE_ATTACHMENT_STORAGE_ROOT = Path(
     os.getenv(
         "E2EE_ATTACHMENT_STORAGE_ROOT",
-        str(Path(__file__).resolve().parents[3] / "private_uploads" / "e2ee"),
+        str(Path(__file__).resolve().parents[2] / "private_uploads" / "e2ee"),
     )
 ).resolve()
 
@@ -183,8 +184,6 @@ async def bind_encrypted_attachment(
     if attachment.message_uid is not None and attachment.message_uid != message_uid:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"error_type": "encrypted_attachment_already_attached"})
     attachment.message_uid = message_uid
-    from datetime import datetime
-
     attachment.attached_at = attachment.attached_at or datetime.utcnow()
     await db.flush()
     return attachment
