@@ -26,6 +26,14 @@ The browser stores the last acknowledged public device directory for the peer. A
 
 Acknowledging that the directory changed is not the same as verifying the new key. New or changed devices still require an explicit safety-number comparison.
 
+### Fail-closed send boundary
+
+An E2EE send re-reads the current peer-device directory immediately before building encrypted envelopes and compares it with the locally acknowledged snapshot. If the directory differs, PubChat refuses to create or submit the encrypted message with `e2ee_peer_directory_unacknowledged` and refreshes the Messenger security panel.
+
+The first observed directory is a trust-on-first-use baseline. After that baseline exists, additions, removals, or identity-key changes block new E2EE sends until the user explicitly acknowledges the changed directory. This acknowledgment only records that the user saw the new directory; it does not mark any new device as cryptographically verified.
+
+When a fresh prekey bundle is claimed for a device, its Ed25519/X25519 identity keys must still match the directory entry used by the send check. A mismatch aborts the send instead of silently encrypting to a different identity.
+
 ## Storage and trust boundary
 
 Manual verification state is stored locally in the same origin-scoped IndexedDB used by the browser E2EE session layer. It is not synchronized as a server trust assertion and must be repeated independently on another device.

@@ -6,6 +6,7 @@ const IDENTITY_DB = 'pubchat-device-crypto-v1';
 const IDENTITY_DB_VERSION = 1;
 const SESSION_DB = 'pubchat-e2ee-sessions-v1';
 const SESSION_DB_VERSION = 1;
+const SECURITY_STORE = 'pins';
 const VERSION = 'pubchat-e2ee-v1';
 const MAX_SKIP = 64;
 const encoder = new TextEncoder();
@@ -22,7 +23,7 @@ const openIdentityDb = () => openDb(IDENTITY_DB, IDENTITY_DB_VERSION);
 const openSessionDb = () => openDb(SESSION_DB, SESSION_DB_VERSION, (db) => {
 	if (!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions', { keyPath: 'key' });
 	if (!db.objectStoreNames.contains('messageKeys')) db.createObjectStore('messageKeys', { keyPath: 'key' });
-	if (!db.objectStoreNames.contains('pins')) db.createObjectStore('pins', { keyPath: 'deviceUid' });
+	if (!db.objectStoreNames.contains(SECURITY_STORE)) db.createObjectStore(SECURITY_STORE, { keyPath: 'deviceUid' });
 });
 
 const requestResult = (request) => new Promise((resolve, reject) => {
@@ -108,11 +109,31 @@ const messageKeyPut = async (record) => {
 	}
 };
 
+const securityRecordGet = async (key) => {
+	const db = await openSessionDb();
+	try {
+		return await requestResult(db.transaction(SECURITY_STORE, 'readonly').objectStore(SECURITY_STORE).get(key));
+	} finally {
+		db.close();
+	}
+};
+
+const securityRecordPut = async (record) => {
+	const db = await openSessionDb();
+	try {
+		const tx = db.transaction(SECURITY_STORE, 'readwrite');
+		tx.objectStore(SECURITY_STORE).put(record);
+		await txDone(tx);
+	} finally {
+		db.close();
+	}
+};
+
 const pinDevice = async (deviceUid, identityDh, identitySigning) => {
 	const db = await openSessionDb();
 	try {
-		const tx = db.transaction('pins', 'readwrite');
-		const store = tx.objectStore('pins');
+		const tx = db.transaction(SECURITY_STORE, 'readwrite');
+		const store = tx.objectStore(SECURITY_STORE);
 		const existing = await requestResult(store.get(deviceUid));
 		if (existing && (existing.identityDh !== identityDh || existing.identitySigning !== identitySigning)) {
 			tx.abort();
@@ -285,23 +306,76 @@ const peerDirectory = async (accountUid) => {
 	return response.data?.devices || [];
 };
 
+const deviceFingerprint = async (device) => b64(await crypto.subtle.digest('SHA-256', concat(
+	encoder.encode('pubchat-device-identity-v1\0'),
+	unb64(device.identity_signing_key),
+	unb64(device.identity_dh_key),
+)));
+
+const canonicalPeerDirectory = async (devices) => Promise.all((devices || []).map(async (device) => ({
+	deviceUid: String(device.device_uid),
+	fingerprint: await deviceFingerprint(device),
+})));
+
+const sameDirectory = (left, right) => {
+	const a = new Map((left || []).map((item) => [String(item.deviceUid), String(item.fingerprint)]));
+	const b = new Map((right || []).map((item) => [String(item.deviceUid), String(item.fingerprint)]));
+	if (a.size !== b.size) return false;
+	for (const [deviceUid, fingerprint] of a.entries()) {
+		if (b.get(deviceUid) !== fingerprint) return false;
+	}
+	return true;
+};
+
+const assertPeerDirectoryAcknowledged = async (accountUid, peers) => {
+	const key = `snapshot:${accountUid}`;
+	const currentDirectory = await canonicalPeerDirectory(peers);
+	const snapshot = await securityRecordGet(key);
+	if (!snapshot) {
+		await securityRecordPut({
+			deviceUid: key,
+			recordType: 'account-snapshot',
+			accountUid: String(accountUid),
+			acknowledgedDirectory: currentDirectory,
+			firstSeenAt: new Date().toISOString(),
+			acknowledgedAt: new Date().toISOString(),
+		});
+		return;
+	}
+	if (sameDirectory(snapshot.acknowledgedDirectory, currentDirectory)) return;
+	window.dispatchEvent(new CustomEvent('pubchat:conversation-encryption-refresh', {
+		detail: { peerUid: String(accountUid), reason: 'peer_device_directory_changed' },
+	}));
+	const error = new Error('e2ee_peer_directory_unacknowledged');
+	error.code = 'e2ee_peer_directory_unacknowledged';
+	throw error;
+};
+
 const claimPeerBundles = async (accountUid) => {
 	const response = await CryptoService.prekeyBundle(accountUid);
 	return response.data?.bundle?.devices || [];
 };
 
-const buildTargets = async (receiverUid) => {
+const buildTargets = async (receiverUid, peerDevices = null) => {
 	const own = await activeOwnDevices();
-	const peers = await peerDirectory(receiverUid);
+	const peers = peerDevices || await peerDirectory(receiverUid);
 	if (!peers.length) return { own, peers, claimed: new Map() };
 	const missingPeer = [];
 	for (const device of peers) {
 		if (!(await sessionGet(outboundKey(device.device_uid)))) missingPeer.push(device.device_uid);
 	}
+	const peerByUid = new Map(peers.map((item) => [String(item.device_uid), item]));
 	let claimed = new Map();
 	if (missingPeer.length) {
 		const bundles = await claimPeerBundles(receiverUid);
-		claimed = new Map(bundles.map((item) => [item.device_uid, item]));
+		for (const item of bundles) {
+			const directoryDevice = peerByUid.get(String(item.device_uid));
+			if (!directoryDevice || !missingPeer.includes(item.device_uid)) continue;
+			if (directoryDevice.identity_dh_key !== item.identity_dh_key || directoryDevice.identity_signing_key !== item.identity_signing_key) {
+				throw new Error('e2ee_peer_directory_changed_during_send');
+			}
+			claimed.set(item.device_uid, item);
+		}
 	}
 	return { own, peers, claimed };
 };
@@ -311,7 +385,9 @@ export const hasPeerCryptoDevices = async (accountUid) => (await peerDirectory(a
 export const sendEncryptedPayload = async ({ receiverUid, payload, frontId, attachmentUid = null, deviceLabel = null }) => {
 	await ensureRegisteredDevice({ deviceLabel, oneTimePrekeyCount: 20 });
 	const registration = await getDeviceRegistrationPayload();
-	const { own, peers, claimed } = await buildTargets(receiverUid);
+	const peers = await peerDirectory(receiverUid);
+	await assertPeerDirectoryAcknowledged(receiverUid, peers);
+	const { own, claimed } = await buildTargets(receiverUid, peers);
 	if (!peers.length) return { encrypted: false, reason: 'peer_no_crypto_devices' };
 
 	const targets = [
