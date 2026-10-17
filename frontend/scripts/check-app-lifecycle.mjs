@@ -33,6 +33,12 @@ if (!app.includes("notifications/startPolling") || !app.includes("notifications/
 if (!app.includes('authenticatedBootstrap')) {
   fail('authenticated bootstrap must remain deduplicated');
 }
+if (!app.includes("import CallOverlay from '@/components/Calls/CallOverlay.vue'")) {
+  fail('App shell must import the global call overlay');
+}
+if (!app.includes('<CallOverlay />')) {
+  fail('App shell must mount the global call overlay so call launcher and incoming calls stay available');
+}
 if (!notifications.includes('POLL_INTERVAL_MS') || !notifications.includes("NotificationService.sync()")) {
   fail('notification polling implementation must remain centralized in the store');
 }
