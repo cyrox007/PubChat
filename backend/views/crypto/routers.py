@@ -17,7 +17,12 @@ from components.device.crypto_service import (
     revoke_device,
     rotate_signed_prekey,
 )
+from components.message.e2ee_delivery import history_envelopes, send_encrypted_message
+from components.message.e2ee_schemas import EncryptedMessageSendRequest, EnvelopeHistoryRequest
+from components.moderation.policy import assert_allowed
+from components.realtime import realtime_service
 from database import Database
+from settings import config
 from views.messenger.ws_handlers import _dm_allowed
 
 
@@ -106,13 +111,61 @@ def install(app: FastAPI) -> None:
     ):
         requester_uid = _account_uid(current_user)
         if not await _dm_allowed(db, requester_uid, target_account_uid):
-            # Do not leak whether a target has devices/keys when the caller is
-            # not currently eligible to initiate a direct conversation.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error_type": "prekey_bundle_not_available"},
             )
         bundle = await claim_prekey_bundle(db, target_account_uid=target_account_uid)
         return {"status": "ok", "bundle": bundle}
+
+    @router.post("/messages")
+    async def send_e2ee_message(
+        payload: EncryptedMessageSendRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        sender_uid = _account_uid(current_user)
+        await assert_allowed(db, sender_uid, "messenger.send")
+        if not await _dm_allowed(db, sender_uid, payload.receiver_uid):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error_type": "dm_not_allowed"},
+            )
+        allowed = await realtime_service.allow_action(
+            user_uid=sender_uid,
+            bucket="direct-message",
+            limit=config.REALTIME_MESSAGE_RATE_LIMIT,
+            window_seconds=config.REALTIME_MESSAGE_RATE_WINDOW_SECONDS,
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "error_type": "direct_message_rate_limited",
+                    "retry_after": config.REALTIME_MESSAGE_RATE_WINDOW_SECONDS,
+                },
+            )
+        result = await send_encrypted_message(
+            db,
+            sender_uid=sender_uid,
+            receiver_uid=payload.receiver_uid,
+            sender_device_uid=payload.sender_device_uid,
+            front_id=payload.front_id,
+            envelopes=[item.model_dump() for item in payload.envelopes],
+        )
+        return {"status": "ok", **result}
+
+    @router.post("/messages/envelopes")
+    async def encrypted_message_history_envelopes(
+        payload: EnvelopeHistoryRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        result = await history_envelopes(
+            db,
+            account_uid=_account_uid(current_user),
+            message_uids=payload.message_uids,
+        )
+        return {"status": "ok", "envelopes": result}
 
     app.include_router(router)
