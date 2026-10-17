@@ -10,3 +10,4 @@ dump.rdb
 .vscode
 *.log
 uploads/*
+private_uploads/*
