@@ -6,6 +6,7 @@ import CallOverlay from '@/components/Calls/CallOverlay.vue';
 import ConversationEncryptionControl from '@/components/Messenger/ConversationEncryptionControl.vue';
 import MessengerSecurityPanel from '@/components/Messenger/MessengerSecurityPanel.vue';
 import { registerPubChatServiceWorker } from '@/pwa/registerServiceWorker';
+import { avatarFallbackDataUrl, publicAssetUrl } from '@/utils/publicAssetUrl';
 
 import "@/assets/main.css";
 import "@/assets/layout-fixes.css";
@@ -14,7 +15,35 @@ import "@/assets/messaging-ux.css";
 import "@/assets/mobile-density.css";
 import "@/assets/messenger-security.css";
 
+const avatarContainerSelector = [
+	'[class*="avatar"]',
+	'.live-presence__person',
+	'.owner-mini__avatar',
+	'.person-row',
+	'.persona-trigger',
+].join(',');
+
+const installPublicImageRecovery = () => {
+	document.addEventListener('error', (event) => {
+		const image = event.target;
+		if (!(image instanceof HTMLImageElement)) return;
+
+		const current = image.currentSrc || image.src || image.getAttribute('src') || '';
+		const normalized = publicAssetUrl(current);
+		if (normalized && normalized !== current && image.dataset.publicAssetRetry !== '1') {
+			image.dataset.publicAssetRetry = '1';
+			image.src = normalized;
+			return;
+		}
+
+		if (!image.closest(avatarContainerSelector) || image.dataset.avatarFallbackApplied === '1') return;
+		image.dataset.avatarFallbackApplied = '1';
+		image.src = avatarFallbackDataUrl(image.alt || '?');
+	}, true);
+};
+
 const bootstrap = async () => {
+	installPublicImageRecovery();
 	await store.dispatch('initializeUser');
 	if (store.getters.isAuth) {
 		try {
