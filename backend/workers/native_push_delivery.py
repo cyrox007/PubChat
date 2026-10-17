@@ -2,8 +2,13 @@ import argparse
 import asyncio
 import logging
 
+# Load backend/.env before native push modules resolve FCM os.environ values in
+# this standalone worker process.
+from settings import config  # noqa: F401
+
 from components.model_registry import ensure_models_registered
 from components.notification.native_push import FCMProvider, NATIVE_PUSH_BATCH_SIZE, run_native_push_worker
+from components.notification.native_push_config import validate_fcm_configuration
 from components.realtime import realtime_service
 from database import Database
 from utils.logger import setup_logger
@@ -23,15 +28,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=NATIVE_PUSH_BATCH_SIZE,
         help="Maximum durable native push delivery records processed in this run (1..250).",
     )
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="Validate FCM configuration locally without sending push or scanning delivery state.",
+    )
     return parser
+
+
+def check_configuration() -> int:
+    result = validate_fcm_configuration()
+    if result["valid"]:
+        logger.info("Direct FCM HTTP v1 configuration preflight: OK")
+        return 0
+    logger.error(
+        "Direct FCM HTTP v1 configuration preflight failed: %s",
+        ",".join(result["errors"]) or "fcm_configuration_invalid",
+    )
+    return 2
 
 
 async def run(max_deliveries: int) -> int:
     ensure_models_registered()
-    provider = FCMProvider()
-    if not provider.configured:
-        logger.error("Direct FCM HTTP v1 credentials are not configured")
+    configuration = validate_fcm_configuration()
+    if not configuration["valid"]:
+        logger.error(
+            "Direct FCM HTTP v1 credentials are not production-ready: %s",
+            ",".join(configuration["errors"]) or "fcm_configuration_invalid",
+        )
         return 2
+    provider = FCMProvider()
     try:
         stats = await run_native_push_worker(
             Database.sessionmaker(),
@@ -62,6 +88,8 @@ async def run(max_deliveries: int) -> int:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.check_config:
+        return check_configuration()
     return asyncio.run(run(max(1, min(int(args.max_deliveries), 250))))
 
 
