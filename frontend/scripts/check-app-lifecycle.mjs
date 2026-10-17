@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import './check-e2ee-verification.mjs';
+import './check-e2ee-directory-transparency.mjs';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const header = read('../src/components/HeaderComponent/index.vue');
