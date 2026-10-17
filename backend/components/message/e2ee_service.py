@@ -35,7 +35,11 @@ def _decode_b64url(value: str, *, max_bytes: int, field: str) -> bytes:
     return raw
 
 
-def _validate_initial_header(header: dict | None, sender_device: DeviceCryptographicIdentity) -> dict | None:
+def _validate_initial_header(
+    header: dict | None,
+    sender_device: DeviceCryptographicIdentity,
+    target_device: DeviceCryptographicIdentity,
+) -> dict | None:
     if header is None:
         return None
     if not isinstance(header, dict):
@@ -50,7 +54,9 @@ def _validate_initial_header(header: dict | None, sender_device: DeviceCryptogra
     }
     if not required.issubset(header):
         raise HTTPException(status_code=400, detail={"error_type": "invalid_e2ee_initial_header"})
-    _decode_b64url(str(header["ephemeral_key"]), max_bytes=32, field="e2ee_ephemeral_key")
+    ephemeral = _decode_b64url(str(header["ephemeral_key"]), max_bytes=32, field="e2ee_ephemeral_key")
+    if len(ephemeral) != 32:
+        raise HTTPException(status_code=400, detail={"error_type": "invalid_e2ee_ephemeral_key"})
     if str(header["sender_identity_dh_key"]) != sender_device.identity_dh_key:
         raise HTTPException(status_code=409, detail={"error_type": "e2ee_sender_identity_mismatch"})
     if str(header["sender_identity_signing_key"]) != sender_device.identity_signing_key:
@@ -64,6 +70,11 @@ def _validate_initial_header(header: dict | None, sender_device: DeviceCryptogra
             raise ValueError
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail={"error_type": "invalid_e2ee_prekey_id"}) from exc
+    if signed_id != int(target_device.signed_prekey_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_type": "e2ee_target_prekey_rotated", "device_uid": str(target_device.uid)},
+        )
     return header
 
 
@@ -142,7 +153,9 @@ async def validate_encrypted_envelopes(
         if len(ciphertext_raw) < 16:
             raise HTTPException(status_code=400, detail={"error_type": "invalid_e2ee_ciphertext"})
 
-        header = _validate_initial_header(envelope.get("initial_header"), sender_device)
+        if counter == 0 and envelope.get("initial_header") is None:
+            raise HTTPException(status_code=400, detail={"error_type": "e2ee_initial_header_required"})
+        header = _validate_initial_header(envelope.get("initial_header"), sender_device, target_device)
         seen_targets.add(recipient_device_uid)
         validated.append(
             {
