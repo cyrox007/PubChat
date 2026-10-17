@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from database import Database
@@ -19,5 +19,4 @@ class PrivateConversationEncryption(Database.Base):
     __table_args__ = (
         CheckConstraint("account_low_uid <> account_high_uid", name="ck_private_conversation_encryption_distinct_accounts"),
         CheckConstraint("mode IN ('plaintext', 'e2ee')", name="ck_private_conversation_encryption_mode"),
-        UniqueConstraint("account_low_uid", "account_high_uid", name="uq_private_conversation_encryption_pair"),
     )
