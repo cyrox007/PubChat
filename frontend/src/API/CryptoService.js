@@ -28,7 +28,7 @@ export default class CryptoService {
 		const policyResponse = await MessengerService.getConversationEncryption(accountUid);
 		const policy = policyResponse.data?.encryption || {};
 		if (policy.effective_mode === 'plaintext') {
-			return { data: { status: 'ok', account_uid: accountUid, devices: [], encryption: policy } };
+			return { data: { status: 'ok', account_uid: accountUid, devices: [], encryption: policy, directory_checkpoint: null } };
 		}
 		if (policy.effective_mode === 'e2ee' && Number(policy.peer_crypto_devices || 0) < 1) {
 			const error = new Error('e2ee_devices_not_ready');
@@ -36,6 +36,12 @@ export default class CryptoService {
 			throw error;
 		}
 		return $api.get(`/crypto/v1/accounts/${accountUid}/devices`);
+	}
+
+	static directoryHistory(accountUid, afterSequence = 0, limit = 200) {
+		return $api.get(`/crypto/v1/accounts/${accountUid}/directory-history`, {
+			params: { after_sequence: Math.max(0, Number(afterSequence) || 0), limit: Math.max(1, Math.min(200, Number(limit) || 200)) },
+		});
 	}
 
 	static prekeyBundle(accountUid) {
