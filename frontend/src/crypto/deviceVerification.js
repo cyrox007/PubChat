@@ -3,7 +3,8 @@ import { ensureRegisteredDevice } from '@/crypto/deviceIdentitySync';
 import { getDeviceRegistrationPayload } from '@/crypto/deviceIdentity';
 
 const DB_NAME = 'pubchat-e2ee-sessions-v1';
-const DB_VERSION = 2;
+const DB_VERSION = 1;
+const SECURITY_STORE = 'pins';
 const encoder = new TextEncoder();
 
 const openDb = () => new Promise((resolve, reject) => {
@@ -12,9 +13,7 @@ const openDb = () => new Promise((resolve, reject) => {
 		const db = request.result;
 		if (!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions', { keyPath: 'key' });
 		if (!db.objectStoreNames.contains('messageKeys')) db.createObjectStore('messageKeys', { keyPath: 'key' });
-		if (!db.objectStoreNames.contains('pins')) db.createObjectStore('pins', { keyPath: 'deviceUid' });
-		if (!db.objectStoreNames.contains('verifications')) db.createObjectStore('verifications', { keyPath: 'key' });
-		if (!db.objectStoreNames.contains('accountSnapshots')) db.createObjectStore('accountSnapshots', { keyPath: 'accountUid' });
+		if (!db.objectStoreNames.contains(SECURITY_STORE)) db.createObjectStore(SECURITY_STORE, { keyPath: 'deviceUid' });
 	};
 	request.onsuccess = () => resolve(request.result);
 	request.onerror = () => reject(request.error || new Error('e2ee_storage_unavailable'));
@@ -31,31 +30,31 @@ const txDone = (tx) => new Promise((resolve, reject) => {
 	tx.onabort = () => reject(tx.error || new Error('e2ee_storage_aborted'));
 });
 
-const getRecord = async (storeName, key) => {
+const getSecurityRecord = async (key) => {
 	const db = await openDb();
 	try {
-		return await requestResult(db.transaction(storeName, 'readonly').objectStore(storeName).get(key));
+		return await requestResult(db.transaction(SECURITY_STORE, 'readonly').objectStore(SECURITY_STORE).get(key));
 	} finally {
 		db.close();
 	}
 };
 
-const putRecord = async (storeName, value) => {
+const putSecurityRecord = async (value) => {
 	const db = await openDb();
 	try {
-		const tx = db.transaction(storeName, 'readwrite');
-		tx.objectStore(storeName).put(value);
+		const tx = db.transaction(SECURITY_STORE, 'readwrite');
+		tx.objectStore(SECURITY_STORE).put(value);
 		await txDone(tx);
 	} finally {
 		db.close();
 	}
 };
 
-const deleteRecord = async (storeName, key) => {
+const deleteSecurityRecord = async (key) => {
 	const db = await openDb();
 	try {
-		const tx = db.transaction(storeName, 'readwrite');
-		tx.objectStore(storeName).delete(key);
+		const tx = db.transaction(SECURITY_STORE, 'readwrite');
+		tx.objectStore(SECURITY_STORE).delete(key);
 		await txDone(tx);
 	} finally {
 		db.close();
@@ -143,7 +142,8 @@ const formatSafetyNumber = (digest) => {
 	return groups.join(' ');
 };
 
-const verificationKey = (ownDeviceUid, peerDeviceUid) => `${ownDeviceUid}:${peerDeviceUid}`;
+const verificationStorageKey = (ownDeviceUid, peerDeviceUid) => `verify:${ownDeviceUid}:${peerDeviceUid}`;
+const snapshotStorageKey = (peerAccountUid) => `snapshot:${peerAccountUid}`;
 
 const canonicalDirectory = async (devices) => Promise.all((devices || []).map(async (device) => ({
 	deviceUid: String(device.device_uid),
@@ -159,16 +159,19 @@ export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) =
 	const peerDevices = response.data?.devices || [];
 	const currentDirectory = await canonicalDirectory(peerDevices);
 	const currentMap = directoryMap(currentDirectory);
-	let snapshot = await getRecord('accountSnapshots', String(peerAccountUid));
+	const snapshotKey = snapshotStorageKey(peerAccountUid);
+	let snapshot = await getSecurityRecord(snapshotKey);
 	const isFirstObservation = !snapshot;
 	if (!snapshot) {
 		snapshot = {
+			deviceUid: snapshotKey,
+			recordType: 'account-snapshot',
 			accountUid: String(peerAccountUid),
 			acknowledgedDirectory: currentDirectory,
 			firstSeenAt: new Date().toISOString(),
 			acknowledgedAt: new Date().toISOString(),
 		};
-		await putRecord('accountSnapshots', snapshot);
+		await putSecurityRecord(snapshot);
 	}
 	const acknowledgedMap = directoryMap(snapshot.acknowledgedDirectory);
 	const added = currentDirectory.filter((entry) => !acknowledgedMap.has(entry.deviceUid));
@@ -183,8 +186,8 @@ export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) =
 		const fingerprint = await computeDeviceFingerprint(peer);
 		const digest = await safetyDigest({ ownAccountUid, own, peerAccountUid, peer });
 		const safetyNumber = formatSafetyNumber(digest);
-		const key = verificationKey(own.device_uid, peer.device_uid);
-		const verification = await getRecord('verifications', key);
+		const key = verificationStorageKey(own.device_uid, peer.device_uid);
+		const verification = await getSecurityRecord(key);
 		const verified = Boolean(
 			verification
 			&& verification.safetyNumber === safetyNumber
@@ -220,8 +223,10 @@ export const verifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUi
 	const state = await getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
 	const device = state.devices.find((item) => item.deviceUid === String(deviceUid));
 	if (!device) throw new Error('e2ee_peer_device_not_found');
-	await putRecord('verifications', {
-		key: verificationKey(state.ownDeviceUid, device.deviceUid),
+	const key = verificationStorageKey(state.ownDeviceUid, device.deviceUid);
+	await putSecurityRecord({
+		deviceUid: key,
+		recordType: 'verification',
 		ownDeviceUid: state.ownDeviceUid,
 		peerAccountUid: String(peerAccountUid),
 		peerDeviceUid: device.deviceUid,
@@ -235,14 +240,17 @@ export const verifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUi
 export const unverifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUid }) => {
 	await ensureRegisteredDevice();
 	const own = await getDeviceRegistrationPayload();
-	await deleteRecord('verifications', verificationKey(own.device_uid, deviceUid));
+	await deleteSecurityRecord(verificationStorageKey(own.device_uid, deviceUid));
 	return getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
 };
 
 export const acknowledgePeerDirectory = async ({ ownAccountUid, peerAccountUid }) => {
 	const response = await CryptoService.accountDevices(peerAccountUid);
 	const currentDirectory = await canonicalDirectory(response.data?.devices || []);
-	await putRecord('accountSnapshots', {
+	const key = snapshotStorageKey(peerAccountUid);
+	await putSecurityRecord({
+		deviceUid: key,
+		recordType: 'account-snapshot',
 		accountUid: String(peerAccountUid),
 		acknowledgedDirectory: currentDirectory,
 		acknowledgedAt: new Date().toISOString(),
