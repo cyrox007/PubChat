@@ -327,7 +327,7 @@ class PrivateMessage(Database.Base):
 
                 formatted_dialogs.append({
                     "partner_id": str(partner_id),
-                    "last_message": dialog.text,
+                    "last_message": "Зашифрованное сообщение" if dialog.content_type == "e2ee" else dialog.text,
                     "last_message_time": last_message_time.isoformat(),
                     "unread_count": unread_count,
                     "partner": {
