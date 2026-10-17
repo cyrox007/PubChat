@@ -12,6 +12,7 @@ import "@/assets/layout-fixes.css";
 import "@/assets/ui-utilities.css";
 import "@/assets/messaging-ux.css";
 import "@/assets/mobile-density.css";
+import "@/assets/messenger-security.css";
 
 const bootstrap = async () => {
 	await store.dispatch('initializeUser');
