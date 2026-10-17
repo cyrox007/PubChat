@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from hashlib import sha256
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import select
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.model import UserDevice
 from components.identity.model import Account, IdentitySession
-from components.identity.service import rotate_session
+from components.identity.service import DEVICE_ID_HEADER, rotate_session
 from services.auth_service import generate_tokens
 from settings import config
 from utils.jwt import validate_refresh_token
@@ -17,6 +17,13 @@ from utils.user_agents import parse_user_agent
 
 def _hash_token(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
+
+
+def _legacy_device_uid(request: Request) -> UUID:
+    try:
+        return UUID(str(request.headers.get(DEVICE_ID_HEADER) or ""))
+    except (ValueError, TypeError, AttributeError):
+        return uuid4()
 
 
 async def rotate_session_with_legacy_fallback(
@@ -67,7 +74,13 @@ async def rotate_session_with_legacy_fallback(
             detail={"error_type": "account_unavailable"},
         )
 
-    tokens = generate_tokens(str(account.uid))
+    session_uid = uuid4()
+    device_uid = _legacy_device_uid(request)
+    tokens = generate_tokens(
+        str(account.uid),
+        session_uid=str(session_uid),
+        device_uid=str(device_uid),
+    )
     expires_at = datetime.utcnow() + timedelta(days=config.REFRESH_TOKEN_EXPIRE_DAYS)
     user_agent = request.headers.get("User-Agent", "unknown")
     device_info = parse_user_agent(user_agent)
@@ -75,7 +88,9 @@ async def rotate_session_with_legacy_fallback(
 
     db.add(
         IdentitySession(
+            uid=session_uid,
             account_uid=account.uid,
+            device_uid=device_uid,
             refresh_token_hash=_hash_token(tokens["refresh"]),
             device_label=device_info.get("device") or device_info.get("device_type"),
             user_agent=user_agent,
