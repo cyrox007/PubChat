@@ -31,6 +31,20 @@ export default class CryptoService {
 		return $api.get(`/crypto/v1/accounts/${accountUid}/prekey-bundle`);
 	}
 
+	static uploadEncryptedAttachment(attachmentUid, ciphertext) {
+		const form = new FormData();
+		form.append('file', new Blob([ciphertext], { type: 'application/octet-stream' }), 'ciphertext.bin');
+		return $api.post(`/crypto/v1/attachments/${attachmentUid}`, form);
+	}
+
+	static encryptedAttachment(attachmentUid) {
+		return $api.get(`/crypto/v1/attachments/${attachmentUid}`, { responseType: 'arraybuffer' });
+	}
+
+	static deleteEncryptedAttachment(attachmentUid) {
+		return $api.delete(`/crypto/v1/attachments/${attachmentUid}`);
+	}
+
 	static sendEncryptedMessage(payload) {
 		return $api.post('/crypto/v1/messages', payload);
 	}
