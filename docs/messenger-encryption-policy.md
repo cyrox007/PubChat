@@ -7,14 +7,29 @@ PubChat supports two actual transports for direct messages: ordinary server-read
 Set `MESSENGER_E2EE_POLICY` on the backend to one of:
 
 - `disabled` — direct conversations use plaintext transport; E2EE sends are rejected by the backend.
-- `optional` — participants may select `plaintext` or `e2ee` for each direct conversation.
+- `optional` — E2EE can be explicitly enabled only by an Account that has earned the E2EE privilege.
 - `required` — all new direct-message sends must use E2EE; plaintext WebSocket sends are rejected.
 
 The default is `optional`.
 
-For rollout compatibility, an optional conversation with no explicit stored preference preserves the previous behavior: a peer with active crypto devices uses E2EE; a peer without crypto devices remains plaintext. Once either participant explicitly selects a mode, that shared conversation preference is authoritative.
+An unconfigured optional conversation starts in `plaintext`. There is no automatic crypto-capable-peer upgrade anymore, because that would bypass the earned-privilege gate.
 
 Changing the system policy does not rewrite the stored per-conversation preference. `disabled` and `required` override it while active; switching the system back to `optional` restores the stored choice.
+
+## Earned E2EE activation privilege
+
+Optional E2EE is a privilege, not a default Account capability. The backend allows a transition into `e2ee` only when at least one of these conditions is true for the Account performing the change:
+
+- current Account reputation label is `established` or `trusted`;
+- current platform role is elevated above ordinary `user`: today this means `moderator` or `admin`.
+
+Reputation is Account-level. The current identity model also stores platform roles at Account level rather than Persona level, so the elevated-role override is enforced against the Account behind the active Persona. A future Persona-specific role system should be wired into the same policy function instead of duplicating the rule in the client.
+
+`unknown`, `developing`, `concerning`, expired assessment, or no assessment do not unlock optional E2EE by themselves.
+
+The privilege gates **activation**, not retroactive confidentiality. If a conversation was already explicitly set to E2EE and the Account's reputation later changes, PubChat does not silently downgrade that conversation to plaintext. The user can still switch it back to plaintext; switching into E2EE again requires current eligibility.
+
+The system-level `required` policy is an administrative override and does not depend on reputation or role.
 
 ## Per-conversation preference
 
@@ -31,10 +46,16 @@ The response exposes:
 - `configured_mode`
 - `effective_mode`
 - `can_change`
+- `can_enable_e2ee`
+- `e2ee_eligible`
+- `e2ee_eligibility_reason`
+- `reputation_label`
+- `elevated_role`
+- `positive_reputation_labels`
 - `crypto_ready`
 - active crypto-device counts for both sides
 
-A mode can be changed through the API only while system policy is `optional` and the existing DM privacy/block policy allows the conversation.
+A mode can be changed through the API only while system policy is `optional` and the existing DM privacy/block policy allows the conversation. A request to enable E2EE without the earned privilege fails with HTTP 403 / `e2ee_privilege_required`.
 
 ## Fail-closed transport rules
 
@@ -42,9 +63,10 @@ The client-side switch is not a security boundary. Both transports are independe
 
 - plaintext Messenger WebSocket frames are consumed and rejected when effective mode is `e2ee`;
 - encrypted `/crypto/v1/messages` sends are rejected when effective mode is `plaintext` or E2EE is disabled;
-- `required`/explicit `e2ee` with missing crypto devices blocks the send instead of silently downgrading to plaintext.
+- `required`/explicit `e2ee` with missing crypto devices blocks the send instead of silently downgrading to plaintext;
+- optional E2EE activation is rejected server-side unless the Account has positive reputation or an elevated platform role.
 
-The browser checks the current policy before deciding whether a crypto-capable peer should be treated as an E2EE target. This keeps text and encrypted attachments on the same conversation mode.
+The browser checks the current policy before deciding whether a peer should be treated as an E2EE target. This keeps text and encrypted attachments on the same conversation mode.
 
 ## History semantics
 
