@@ -4,8 +4,12 @@ export default class MessengerService {
 	static async getDialogs() {
 		return await $api.get('/messenger/dialogs');
 	}
-	/* async searchUsers(query) {
-		//await CSRFService.getCSRF();
-		return $api.get('/api/messenger/search', { params: { q: query } });
-	} */
+
+	static async getConversationEncryption(peerUid) {
+		return await $api.get(`/messenger/conversations/${peerUid}/encryption`);
+	}
+
+	static async setConversationEncryption(peerUid, mode) {
+		return await $api.put(`/messenger/conversations/${peerUid}/encryption`, { mode });
+	}
 };

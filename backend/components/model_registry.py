@@ -7,19 +7,16 @@ workers and integration tools must not depend on that import order.
 
 from sqlalchemy.orm import configure_mappers
 
-# Legacy backbone first. Relationships use string class names, so importing the
-# complete graph before configure_mappers() is what matters, not incidental router
-# imports.
 from components.user import model as _user_model  # noqa: F401
 from components.room import model as _room_model  # noqa: F401
 from components.message import model as _message_model  # noqa: F401
 from components.message import reaction_model as _message_reaction_model  # noqa: F401
 from components.message import e2ee_model as _message_e2ee_model  # noqa: F401
 from components.message import e2ee_attachment_model as _message_e2ee_attachment_model  # noqa: F401
+from components.message import encryption_policy_model as _message_encryption_policy_model  # noqa: F401
 from components.device import model as _device_model  # noqa: F401
 from components.device import crypto_model as _device_crypto_model  # noqa: F401
 
-# Revival domains.
 from components.identity import model as _identity_model  # noqa: F401
 from components.space import model as _space_model  # noqa: F401
 from components.social import availability_model as _social_availability_model  # noqa: F401
@@ -38,5 +35,4 @@ from components.support import model as _support_model  # noqa: F401
 
 
 def ensure_models_registered() -> None:
-    """Fail fast if any ORM string relationship cannot be resolved."""
     configure_mappers()

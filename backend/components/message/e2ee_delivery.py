@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.message.e2ee_attachment import bind_encrypted_attachment
 from components.message.e2ee_service import E2EE_VERSION, envelopes_for_messages, persist_envelopes, validate_encrypted_envelopes
+from components.message.encryption_policy import assert_e2ee_allowed
 from components.message.model import PrivateMessage
 from components.moderation.abuse_signals import detect_dm_recipient_burst
 from components.notification.message_delivery import SURFACE_MESSENGER, get_message_notification_preferences, message_delivery_policy
@@ -31,6 +32,8 @@ async def send_encrypted_message(
     envelopes: list[dict],
     attachment_uid: UUID | None = None,
 ) -> dict:
+    await assert_e2ee_allowed(db, sender_uid, receiver_uid)
+
     scope = f"direct-message:{receiver_uid}"
     claimed = await realtime_service.claim_event(user_uid=sender_uid, scope=scope, event_id=front_id)
     if not claimed:

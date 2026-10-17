@@ -20,6 +20,7 @@ from components.message.model import Message, PrivateMessage
 from components.message.reaction_model import MessageReaction
 from components.message.e2ee_model import PrivateMessageEnvelope
 from components.message.e2ee_attachment_model import EncryptedPrivateAttachment
+from components.message.encryption_policy_model import PrivateConversationEncryption
 from components.transcription.model import MediaTranscriptionJob
 from components.reputation.model import AccountReputationAssessment
 from components.social.availability_model import PersonaSocialAvailability
