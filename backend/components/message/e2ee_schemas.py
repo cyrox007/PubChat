@@ -19,6 +19,7 @@ class EncryptedMessageSendRequest(BaseModel):
     sender_device_uid: UUID
     front_id: str = Field(min_length=8, max_length=128)
     envelopes: list[EncryptedEnvelopeInput] = Field(min_length=1, max_length=40)
+    attachment_uid: UUID | None = None
 
 
 class EnvelopeHistoryRequest(BaseModel):
