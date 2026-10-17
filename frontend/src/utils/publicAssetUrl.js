@@ -1,4 +1,5 @@
-const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
+const viteEnv = import.meta.env || {};
+const apiBaseUrl = String(viteEnv.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 const backendPublicPath = /^\/(?:uploads|static)\//i;
 const legacyApiPublicPath = /^\/api\/(?:uploads|static)\//i;
 
