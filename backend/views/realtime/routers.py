@@ -69,6 +69,8 @@ def install(app: FastAPI) -> None:
                 account_uid=account_uid,
                 target=payload.target,
                 resource_uid=resource_uid,
+                session_uid=current_user.get("session_uid"),
+                device_uid=current_user.get("device_uid"),
             )
         except RealtimeUnavailable as exc:
             raise HTTPException(
