@@ -45,6 +45,16 @@ async def rotate_session_with_legacy_fallback(
             detail={"error_type": "invalid_refresh_token"},
         )
 
+    # Only genuinely legacy refresh tokens may use the compatibility bridge.
+    # A modern token with sid that lost its IdentitySession was revoked/expired;
+    # allowing it to fall back through the legacy UserDevice row would resurrect
+    # a deliberately terminated session.
+    if payload.get("session_uid"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error_type": "session_not_found"},
+        )
+
     legacy_result = await db.execute(
         select(UserDevice).where(
             UserDevice.token == refresh_token,
