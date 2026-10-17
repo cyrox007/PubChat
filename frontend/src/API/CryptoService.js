@@ -1,5 +1,6 @@
 import $api from '.';
 import MessengerService from '@/API/MessengerService';
+import { assertDirectoryCheckpoint } from '@/crypto/directoryCheckpoint';
 
 export default class CryptoService {
 	static registerDevice(payload) {
@@ -35,7 +36,20 @@ export default class CryptoService {
 			error.code = 'e2ee_devices_not_ready';
 			throw error;
 		}
-		return $api.get(`/crypto/v1/accounts/${accountUid}/devices`);
+		const response = await $api.get(`/crypto/v1/accounts/${accountUid}/devices`);
+		const devices = response.data?.devices || [];
+		await assertDirectoryCheckpoint({
+			accountUid,
+			checkpoint: response.data?.directory_checkpoint || null,
+			requireCheckpoint: devices.length > 0,
+			historyLoader: async (afterSequence, limit) => {
+				const historyResponse = await $api.get(`/crypto/v1/accounts/${accountUid}/directory-history`, {
+					params: { after_sequence: afterSequence, limit },
+				});
+				return historyResponse.data?.events || [];
+			},
+		});
+		return response;
 	}
 
 	static directoryHistory(accountUid, afterSequence = 0, limit = 200) {
