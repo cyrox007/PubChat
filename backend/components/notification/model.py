@@ -10,41 +10,22 @@ from database import Database
 class ActivityReminderPreference(Database.Base):
     __tablename__ = "activity_reminder_preferences"
 
-    activity_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("space_activities.uid", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    account_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("accounts.uid", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    activity_uid = Column(UUID(as_uuid=True), ForeignKey("space_activities.uid", ondelete="CASCADE"), primary_key=True)
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), primary_key=True)
     lead_minutes = Column(Integer, nullable=False, default=60)
     enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (
-        Index("ix_activity_reminders_account_enabled", "account_uid", "enabled"),
-    )
+    __table_args__ = (Index("ix_activity_reminders_account_enabled", "account_uid", "enabled"),)
 
 
 class MessageNotificationPreference(Database.Base):
-    """Account-level alert preferences for message delivery surfaces.
-
-    These settings control notification UX only. They never grant or remove the
-    right to receive/read a message and they do not replace block/privacy checks.
-    External re-engagement channels default to disabled until explicitly enabled.
-    """
+    """Account-level alert preferences for message delivery surfaces."""
 
     __tablename__ = "message_notification_preferences"
 
-    account_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("accounts.uid", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), primary_key=True)
     messenger_in_app = Column(Boolean, nullable=False, default=True)
     space_in_app = Column(Boolean, nullable=False, default=True)
     messenger_sound = Column(Boolean, nullable=False, default=True)
@@ -52,25 +33,19 @@ class MessageNotificationPreference(Database.Base):
     email_unread_dm_nudge = Column(Boolean, nullable=False, default=False)
     web_push_messenger = Column(Boolean, nullable=False, default=False)
     web_push_space = Column(Boolean, nullable=False, default=False)
+    native_push_messenger = Column(Boolean, nullable=False, default=False)
+    native_push_space = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class WebPushSubscription(Database.Base):
-    """One browser/device PushSubscription owned by an Account.
-
-    Endpoint and encryption keys are delivery credentials, not public profile
-    data. They are never returned in notification list projections or logs.
-    """
+    """One browser/device PushSubscription owned by an Account."""
 
     __tablename__ = "web_push_subscriptions"
 
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    account_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("accounts.uid", ondelete="CASCADE"),
-        nullable=False,
-    )
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False)
     endpoint = Column(Text, nullable=False)
     endpoint_hash = Column(String(64), nullable=False)
     p256dh = Column(String(256), nullable=False)
@@ -86,23 +61,44 @@ class WebPushSubscription(Database.Base):
     )
 
 
-class ExternalDeliveryLedger(Database.Base):
-    """Durable, privacy-minimal state for external notification delivery.
+class NativePushDevice(Database.Base):
+    """Native app installation registered for OS push delivery.
 
-    Message contents and destination addresses are deliberately not persisted in
-    this ledger. Delivery adapters resolve the current verified destination when
-    they execute and only store provider ids/failure classes required for retry
-    and auditability.
+    Delivery tokens are credentials. API projections and logs never expose them;
+    only a SHA-256 fingerprint is used for uniqueness/operational lookup.
     """
+
+    __tablename__ = "native_push_devices"
+
+    uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False)
+    installation_uid = Column(UUID(as_uuid=True), nullable=False)
+    platform = Column(String(16), nullable=False)
+    provider = Column(String(16), nullable=False)
+    token = Column(Text, nullable=False)
+    token_hash = Column(String(64), nullable=False)
+    device_label = Column(String(120), nullable=True)
+    app_version = Column(String(40), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    revoked_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("installation_uid", name="uq_native_push_installation"),
+        UniqueConstraint("token_hash", name="uq_native_push_token_hash"),
+        Index("ix_native_push_account_active", "account_uid", "revoked_at", "updated_at"),
+        Index("ix_native_push_provider_active", "provider", "revoked_at", "updated_at"),
+    )
+
+
+class ExternalDeliveryLedger(Database.Base):
+    """Durable, privacy-minimal state for external notification delivery."""
 
     __tablename__ = "external_delivery_ledger"
 
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    account_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("accounts.uid", ondelete="CASCADE"),
-        nullable=False,
-    )
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False)
     channel = Column(String(24), nullable=False)
     aggregate_key = Column(String(180), nullable=False)
     dedupe_key = Column(String(220), nullable=False)
@@ -122,12 +118,7 @@ class ExternalDeliveryLedger(Database.Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint(
-            "account_uid",
-            "channel",
-            "dedupe_key",
-            name="uq_external_delivery_dedupe",
-        ),
+        UniqueConstraint("account_uid", "channel", "dedupe_key", name="uq_external_delivery_dedupe"),
         Index("ix_external_delivery_pending", "channel", "status", "next_attempt_at", "created_at"),
         Index("ix_external_delivery_claim", "channel", "status", "claim_expires_at"),
         Index("ix_external_delivery_account_created", "account_uid", "created_at"),
@@ -138,40 +129,19 @@ class UserNotification(Database.Base):
     __tablename__ = "user_notifications"
 
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    account_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("accounts.uid", ondelete="CASCADE"),
-        nullable=False,
-    )
+    account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False)
     kind = Column(String(48), nullable=False)
     dedupe_key = Column(String(180), nullable=False)
     title = Column(String(180), nullable=False)
     body = Column(String(500), nullable=False)
-    context_room_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("rooms.uid", ondelete="SET NULL"),
-        nullable=True,
-    )
-    activity_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("space_activities.uid", ondelete="SET NULL"),
-        nullable=True,
-    )
-    occurrence_uid = Column(
-        UUID(as_uuid=True),
-        ForeignKey("activity_occurrences.uid", ondelete="SET NULL"),
-        nullable=True,
-    )
+    context_room_uid = Column(UUID(as_uuid=True), ForeignKey("rooms.uid", ondelete="SET NULL"), nullable=True)
+    activity_uid = Column(UUID(as_uuid=True), ForeignKey("space_activities.uid", ondelete="SET NULL"), nullable=True)
+    occurrence_uid = Column(UUID(as_uuid=True), ForeignKey("activity_occurrences.uid", ondelete="SET NULL"), nullable=True)
     read_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint(
-            "account_uid",
-            "kind",
-            "dedupe_key",
-            name="uq_user_notification_dedupe",
-        ),
+        UniqueConstraint("account_uid", "kind", "dedupe_key", name="uq_user_notification_dedupe"),
         Index("ix_user_notifications_account_created", "account_uid", "created_at"),
         Index("ix_user_notifications_account_unread", "account_uid", "read_at"),
     )
