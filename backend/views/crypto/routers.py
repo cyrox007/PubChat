@@ -17,6 +17,7 @@ from components.device.crypto_service import (
     revoke_device,
     rotate_signed_prekey,
 )
+from components.device.directory import public_devices
 from components.message.e2ee_delivery import history_envelopes, send_encrypted_message
 from components.message.e2ee_schemas import EncryptedMessageSendRequest, EnvelopeHistoryRequest
 from components.moderation.policy import assert_allowed
@@ -102,6 +103,21 @@ def install(app: FastAPI) -> None:
             device_uid=device_uid,
         )
         return {"status": "ok", **result}
+
+    @router.get("/accounts/{target_account_uid}/devices")
+    async def account_crypto_devices(
+        target_account_uid: UUID,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        requester_uid = _account_uid(current_user)
+        if not await _dm_allowed(db, requester_uid, target_account_uid):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error_type": "crypto_devices_not_available"},
+            )
+        devices = await public_devices(db, target_account_uid)
+        return {"status": "ok", "account_uid": str(target_account_uid), "devices": devices}
 
     @router.get("/accounts/{target_account_uid}/prekey-bundle")
     async def account_prekey_bundle(
