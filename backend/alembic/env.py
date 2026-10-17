@@ -18,6 +18,7 @@ from components.user.model import User, Penalty, UserRelationship
 from components.room.model import Room, RoomMember, RoomBan
 from components.message.model import Message, PrivateMessage
 from components.message.reaction_model import MessageReaction
+from components.message.e2ee_model import PrivateMessageEnvelope
 from components.transcription.model import MediaTranscriptionJob
 from components.reputation.model import AccountReputationAssessment
 from components.social.availability_model import PersonaSocialAvailability

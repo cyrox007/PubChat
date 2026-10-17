@@ -23,7 +23,19 @@ export default class CryptoService {
 		return $api.delete(`/crypto/v1/devices/${deviceUid}`);
 	}
 
+	static accountDevices(accountUid) {
+		return $api.get(`/crypto/v1/accounts/${accountUid}/devices`);
+	}
+
 	static prekeyBundle(accountUid) {
 		return $api.get(`/crypto/v1/accounts/${accountUid}/prekey-bundle`);
+	}
+
+	static sendEncryptedMessage(payload) {
+		return $api.post('/crypto/v1/messages', payload);
+	}
+
+	static messageEnvelopes(messageUids) {
+		return $api.post('/crypto/v1/messages/envelopes', { message_uids: messageUids });
 	}
 }
