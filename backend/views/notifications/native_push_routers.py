@@ -3,11 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
 from components.notification.native_push import (
-    fcm_configured,
     list_native_push_devices,
     revoke_native_push_device,
     upsert_native_push_device,
 )
+from components.notification.native_push_config import validate_fcm_configuration
 from components.notification.schemas import NativePushDeviceRemoveRequest, NativePushDeviceUpsertRequest
 from components.space.service import _get_account
 from database import Database
@@ -19,10 +19,23 @@ def install(app: FastAPI) -> None:
     @router.get("/config")
     async def native_push_config(current_user: dict = Depends(auth_middle)):
         _ = current_user
+        fcm = validate_fcm_configuration()
         return {
             "status": "ok",
-            "android": {"provider": "fcm", "enabled": fcm_configured()},
-            "ios": {"provider": "apns", "enabled": False},
+            "release_scope": "android-first-1.0",
+            "android": {
+                "provider": "fcm",
+                "supported": True,
+                "enabled": bool(fcm["valid"]),
+                "transport": fcm["transport"],
+                "configuration_errors": fcm["errors"],
+            },
+            "ios": {
+                "provider": "apns",
+                "supported": False,
+                "enabled": False,
+                "release_status": "post-1.0",
+            },
             "privacy": {"message_content_in_push": False},
         }
 
