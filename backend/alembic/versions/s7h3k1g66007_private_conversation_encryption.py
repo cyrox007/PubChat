@@ -32,7 +32,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["account_low_uid"], ["accounts.uid"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["set_by_account_uid"], ["accounts.uid"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("account_low_uid", "account_high_uid"),
-        sa.UniqueConstraint("account_low_uid", "account_high_uid", name="uq_private_conversation_encryption_pair"),
     )
 
 
