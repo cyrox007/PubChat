@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,6 +17,7 @@ DEFAULT_PENDING_RETENTION_HOURS = 24
 DEFAULT_ORPHAN_GRACE_HOURS = 24
 DEFAULT_BATCH_SIZE = 100
 MAX_BATCH_SIZE = 1000
+_STORAGE_NAME_RE = re.compile(r"^[0-9a-f]{32}\.bin$")
 
 
 def _bounded_positive_env(name: str, default: int, maximum: int) -> int:
@@ -48,7 +50,7 @@ class E2EEAttachmentRetentionStats:
 
 
 def _safe_storage_file(root: Path, storage_name: str) -> Path | None:
-    if not storage_name or Path(storage_name).name != storage_name:
+    if not _STORAGE_NAME_RE.fullmatch(storage_name or ""):
         return None
     candidate = root / storage_name
     if candidate.is_symlink():
@@ -78,6 +80,8 @@ def _old_orphan_candidates(root: Path, *, cutoff: datetime, limit: int) -> tuple
         try:
             if path.is_symlink():
                 skipped_symlinks += 1
+                continue
+            if not _STORAGE_NAME_RE.fullmatch(path.name):
                 continue
             if not path.is_file():
                 continue
