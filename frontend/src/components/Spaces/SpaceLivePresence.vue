@@ -1,8 +1,17 @@
 <template>
-	<section class="live-presence" :class="{ 'live-presence--offline': !isConnected }" aria-live="polite">
+	<section
+		class="live-presence"
+		:class="{ 'live-presence--offline': !isConnected }"
+		:aria-label="presenceAriaLabel"
+		:title="presenceAriaLabel"
+		aria-live="polite"
+	>
 		<div class="live-presence__copy">
 			<span class="live-presence__status">
-				<span class="live-presence__label"><span class="live-presence__dot" aria-hidden="true"></span>Сейчас здесь</span>
+				<span class="live-presence__label">
+					<span class="live-presence__dot" aria-hidden="true"></span>
+					<span class="live-presence__place">{{ spaceName }}</span>
+				</span>
 				<strong>{{ presenceTitle }}</strong>
 			</span>
 			<small v-if="typingLabel" class="live-presence__typing" role="status">
@@ -42,6 +51,7 @@ import { handleAvatarImageError, publicAssetUrl } from '@/utils/publicAssetUrl';
 const store = useStore();
 const users = computed(() => store.getters['chat/getConnectedUsers'] || []);
 const messages = computed(() => store.getters['chat/getMessages'] || []);
+const currentRoom = computed(() => store.getters['chat/getCurrentRoom'] || null);
 const connectionState = computed(() => store.getters['chat/getConnectionState']);
 const isConnected = computed(() => connectionState.value === 'connected');
 const currentUserUid = computed(() => store.getters.getUser?.uid || '');
@@ -49,6 +59,7 @@ const socket = computed(() => store.state.chat?.socket || null);
 const visibleUsers = computed(() => users.value.slice(0, 5));
 const hiddenCount = computed(() => Math.max(0, users.value.length - visibleUsers.value.length));
 const otherPeopleCount = computed(() => users.value.filter((user) => String(user.uid || user.account_uid || '') !== String(currentUserUid.value)).length);
+const spaceName = computed(() => String(currentRoom.value?.name || 'Пространство').trim() || 'Пространство');
 const typingUserUids = ref([]);
 const typingTimers = new Map();
 let localTypingTimer = null;
@@ -76,10 +87,17 @@ const typingLabel = computed(() => {
 });
 
 const presenceTitle = computed(() => {
-	if (!isConnected.value) return 'Уточняем, кто здесь';
-	if (!users.value.length) return 'Пока никого не видно';
-	if (!otherPeopleCount.value) return 'Вы здесь';
-	return `${users.value.length} ${pluralize(users.value.length, ['человек', 'человека', 'человек'])} в пространстве`;
+	if (!isConnected.value) return '· подключаемся';
+	if (!users.value.length) return '· пока тихо';
+	if (!otherPeopleCount.value) return '· Вы здесь';
+	return `· ${users.value.length} ${pluralize(users.value.length, ['человек', 'человека', 'человек'])} здесь`;
+});
+
+const presenceAriaLabel = computed(() => {
+	if (!isConnected.value) return `Пространство ${spaceName.value}: восстанавливаем соединение`;
+	if (!users.value.length) return `Пространство ${spaceName.value}: сейчас никого не видно`;
+	if (!otherPeopleCount.value) return `Вы сейчас в пространстве ${spaceName.value}`;
+	return `Вы сейчас в пространстве ${spaceName.value}. Здесь ${users.value.length} ${pluralize(users.value.length, ['человек', 'человека', 'человек'])}`;
 });
 
 const presenceDetail = computed(() => {
@@ -212,8 +230,8 @@ const pluralize = (value, forms) => {
 </script>
 
 <style scoped>
-.live-presence{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-2);min-height:48px;padding:.42rem clamp(var(--ui-space-3),2vw,var(--ui-space-5));border-top:1px solid var(--ui-border);background:color-mix(in srgb,var(--ui-success-soft) 32%,var(--ui-surface))}.live-presence__copy{min-width:0;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}.live-presence__status{display:inline-flex;align-items:center;gap:.45rem;min-width:0}.live-presence__label{display:inline-flex;align-items:center;gap:.32rem;color:var(--ui-success);font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em;white-space:nowrap}.live-presence__dot{width:.42rem;height:.42rem;border-radius:50%;background:currentColor;box-shadow:0 0 0 .16rem color-mix(in srgb,var(--ui-success) 12%,transparent)}.live-presence__copy strong{font-size:.78rem;white-space:nowrap}.live-presence__copy small{color:var(--ui-text-muted);font-size:.68rem;line-height:1.2}.live-presence__detail{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.live-presence__typing{display:inline-flex;align-items:center;gap:.3rem;color:var(--ui-primary)!important}.live-presence__typing-dots{display:inline-flex;align-items:center;gap:2px}.live-presence__typing-dots i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:typing-dot 1s infinite ease-in-out}.live-presence__typing-dots i:nth-child(2){animation-delay:.15s}.live-presence__typing-dots i:nth-child(3){animation-delay:.3s}.live-presence__people{display:flex;align-items:center;flex:0 0 auto}.live-presence__person,.live-presence__more{width:1.8rem;height:1.8rem;display:grid;place-items:center;margin-left:-.32rem;border:2px solid var(--ui-surface);border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-size:.66rem;font-weight:800;text-decoration:none;overflow:hidden}.live-presence__person:first-child{margin-left:0}.live-presence__person img{width:100%;height:100%;object-fit:cover}.live-presence__person:hover,.live-presence__person:focus-visible{z-index:1;outline:2px solid color-mix(in srgb,var(--ui-primary) 45%,transparent);outline-offset:1px}.live-presence__more{background:var(--ui-surface-muted);color:var(--ui-text-muted)}.live-presence--offline{background:var(--ui-surface-soft)}.live-presence--offline .live-presence__label{color:var(--ui-text-muted)}
+.live-presence{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-2);min-height:48px;padding:.42rem clamp(var(--ui-space-3),2vw,var(--ui-space-5));border-top:1px solid var(--ui-border);background:color-mix(in srgb,var(--ui-success-soft) 32%,var(--ui-surface))}.live-presence__copy{min-width:0;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}.live-presence__status{display:inline-flex;align-items:center;gap:.35rem;min-width:0}.live-presence__label{display:inline-flex;align-items:center;gap:.32rem;min-width:0;color:var(--ui-success);font-size:var(--ui-text-xs);font-weight:800;letter-spacing:.01em;white-space:nowrap}.live-presence__place{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live-presence__dot{width:.42rem;height:.42rem;flex:0 0 .42rem;border-radius:50%;background:currentColor;box-shadow:0 0 0 .16rem color-mix(in srgb,var(--ui-success) 12%,transparent)}.live-presence__copy strong{font-size:var(--ui-text-xs);white-space:nowrap}.live-presence__copy small{color:var(--ui-text-muted);font-size:.68rem;line-height:1.2}.live-presence__detail{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.live-presence__typing{display:inline-flex;align-items:center;gap:.3rem;color:var(--ui-primary)!important}.live-presence__typing-dots{display:inline-flex;align-items:center;gap:2px}.live-presence__typing-dots i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:typing-dot 1s infinite ease-in-out}.live-presence__typing-dots i:nth-child(2){animation-delay:.15s}.live-presence__typing-dots i:nth-child(3){animation-delay:.3s}.live-presence__people{display:flex;align-items:center;flex:0 0 auto}.live-presence__person,.live-presence__more{width:1.8rem;height:1.8rem;display:grid;place-items:center;margin-left:-.32rem;border:2px solid var(--ui-surface);border-radius:50%;background:var(--ui-primary-soft);color:var(--ui-primary);font-size:.66rem;font-weight:800;text-decoration:none;overflow:hidden}.live-presence__person:first-child{margin-left:0}.live-presence__person img{width:100%;height:100%;object-fit:cover}.live-presence__person:hover,.live-presence__person:focus-visible{z-index:1;outline:2px solid color-mix(in srgb,var(--ui-primary) 45%,transparent);outline-offset:1px}.live-presence__more{background:var(--ui-surface-muted);color:var(--ui-text-muted)}.live-presence--offline{background:var(--ui-surface-soft)}.live-presence--offline .live-presence__label{color:var(--ui-text-muted)}
 @keyframes typing-dot{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-2px)}}
 @media(max-width:760px){.live-presence__detail{display:none}}
-@media(max-width:560px){.live-presence{min-height:42px;padding:.32rem var(--ui-space-3)}.live-presence__copy{gap:.3rem}.live-presence__label{font-size:.64rem}.live-presence__copy strong{font-size:.74rem}.live-presence__person,.live-presence__more{width:1.65rem;height:1.65rem}.live-presence__people .live-presence__person:nth-child(n+4){display:none}}
+@media(max-width:560px){.live-presence{min-height:42px;padding:.32rem var(--ui-space-3)}.live-presence__copy{gap:.3rem}.live-presence__label,.live-presence__copy strong{font-size:.7rem}.live-presence__person,.live-presence__more{width:1.65rem;height:1.65rem}.live-presence__people .live-presence__person:nth-child(n+4){display:none}}
 </style>
