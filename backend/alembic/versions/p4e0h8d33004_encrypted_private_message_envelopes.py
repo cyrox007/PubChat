@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["message_uid"], ["private_messages.uid"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["recipient_account_uid"], ["accounts.uid"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["recipient_device_uid"], ["device_cryptographic_identities.uid"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["sender_device_uid"], ["device_cryptographic_identities.uid"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["sender_device_uid"], ["device_cryptographic_identities.uid"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("message_uid", "recipient_device_uid", name="uq_private_message_envelope_message_device"),
         sa.UniqueConstraint("recipient_device_uid", "session_id", "counter", name="uq_private_message_envelope_session_counter"),
