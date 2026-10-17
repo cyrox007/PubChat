@@ -1,0 +1,25 @@
+#pubchat-messenger-security-root {
+	position: fixed;
+	top: 8.35rem;
+	right: 1.25rem;
+	z-index: 117;
+	width: min(610px, calc(100vw - 2rem));
+	max-height: calc(100dvh - 9rem);
+	overflow: auto;
+	border-radius: 14px;
+	box-shadow: var(--ui-shadow-md);
+}
+
+#pubchat-messenger-security-root:empty {
+	display: none;
+}
+
+@media (max-width: 680px) {
+	#pubchat-messenger-security-root {
+		top: calc(var(--ui-mobile-topbar-height) + 3.75rem);
+		left: .55rem;
+		right: .55rem;
+		width: auto;
+		max-height: calc(100dvh - var(--ui-mobile-topbar-height) - var(--ui-mobile-nav-height) - 4.8rem);
+	}
+}
