@@ -30,7 +30,7 @@ class PrivateMessageEnvelope(Database.Base):
     )
     sender_device_uid = Column(
         UUID(as_uuid=True),
-        ForeignKey("device_cryptographic_identities.uid", ondelete="RESTRICT"),
+        ForeignKey("device_cryptographic_identities.uid", ondelete="CASCADE"),
         nullable=False,
     )
     session_id = Column(UUID(as_uuid=True), nullable=False)
