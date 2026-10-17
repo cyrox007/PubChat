@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from components.message.e2ee_attachment import bind_encrypted_attachment
 from components.message.e2ee_service import E2EE_VERSION, envelopes_for_messages, persist_envelopes, validate_encrypted_envelopes
 from components.message.model import PrivateMessage
 from components.moderation.abuse_signals import detect_dm_recipient_burst
@@ -28,6 +29,7 @@ async def send_encrypted_message(
     sender_device_uid: UUID,
     front_id: str,
     envelopes: list[dict],
+    attachment_uid: UUID | None = None,
 ) -> dict:
     scope = f"direct-message:{receiver_uid}"
     claimed = await realtime_service.claim_event(user_uid=sender_uid, scope=scope, event_id=front_id)
@@ -42,15 +44,28 @@ async def send_encrypted_message(
             sender_device_uid=sender_device_uid,
             raw_envelopes=envelopes,
         )
+        metadata = {
+            "encryption_version": E2EE_VERSION,
+            "payload_kind": "attachment" if attachment_uid else "text",
+        }
+        if attachment_uid:
+            metadata["attachment_uid"] = str(attachment_uid)
         message = PrivateMessage(
             content_type="e2ee",
             text=None,
-            media_metadata={"encryption_version": E2EE_VERSION},
+            media_metadata=metadata,
             sender_uid=sender_uid,
             receiver_uid=receiver_uid,
         )
         db.add(message)
         await db.flush()
+        if attachment_uid:
+            await bind_encrypted_attachment(
+                db,
+                account_uid=sender_uid,
+                attachment_uid=attachment_uid,
+                message_uid=message.uid,
+            )
         await persist_envelopes(db, message_uid=message.uid, envelopes=validated)
         await db.commit()
         await db.refresh(message, attribute_names=["sender", "receiver"])
