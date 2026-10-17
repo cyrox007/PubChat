@@ -222,6 +222,7 @@ const createOutboundSession = async (target, registration) => {
 		direction: 'out',
 		sessionId,
 		peerDeviceUid: target.device_uid,
+		peerIdentityDh: target.identity_dh_key,
 		chainKey,
 		nextCounter: 0,
 		headerSent: false,
@@ -247,7 +248,7 @@ const getOrCreateOutbound = async (target, registration) => {
 	return createOutboundSession(target, registration);
 };
 
-const encryptForSession = async (session, senderDeviceUid, recipientDeviceUid, text) => {
+const encryptForSession = async (session, senderDeviceUid, recipientDeviceUid, payload) => {
 	const counter = session.nextCounter;
 	const { messageKey, nextChainKey } = await ratchetStep(session.chainKey, counter);
 	const nonce = crypto.getRandomValues(new Uint8Array(12));
@@ -255,7 +256,7 @@ const encryptForSession = async (session, senderDeviceUid, recipientDeviceUid, t
 	const ciphertext = await crypto.subtle.encrypt(
 		{ name: 'AES-GCM', iv: nonce, additionalData: associatedData, tagLength: 128 },
 		messageKey,
-		encoder.encode(JSON.stringify({ type: 'text', text })),
+		encoder.encode(JSON.stringify(payload)),
 	);
 	await messageKeyPut({
 		key: cachedMessageKey('out', session.sessionId, counter),
@@ -305,7 +306,9 @@ const buildTargets = async (receiverUid) => {
 	return { own, peers, claimed };
 };
 
-export const sendEncryptedText = async ({ receiverUid, text, frontId, deviceLabel = null }) => {
+export const hasPeerCryptoDevices = async (accountUid) => (await peerDirectory(accountUid)).length > 0;
+
+export const sendEncryptedPayload = async ({ receiverUid, payload, frontId, attachmentUid = null, deviceLabel = null }) => {
 	await ensureRegisteredDevice({ deviceLabel, oneTimePrekeyCount: 20 });
 	const registration = await getDeviceRegistrationPayload();
 	const { own, peers, claimed } = await buildTargets(receiverUid);
@@ -323,13 +326,14 @@ export const sendEncryptedText = async ({ receiverUid, text, frontId, deviceLabe
 			const resolved = await getOrCreateOutbound(target, registration);
 			if (resolved.created) createdKeys.push(resolved.record.key);
 			touchedSessions.push(resolved.record.key);
-			envelopes.push(await encryptForSession(resolved.record, registration.device_uid, target.device_uid, text));
+			envelopes.push(await encryptForSession(resolved.record, registration.device_uid, target.device_uid, payload));
 		}
 		const response = await CryptoService.sendEncryptedMessage({
 			receiver_uid: receiverUid,
 			sender_device_uid: registration.device_uid,
 			front_id: frontId,
 			envelopes,
+			attachment_uid: attachmentUid,
 		});
 		for (const key of touchedSessions) {
 			const session = await sessionGet(key);
@@ -341,6 +345,13 @@ export const sendEncryptedText = async ({ receiverUid, text, frontId, deviceLabe
 		throw error;
 	}
 };
+
+export const sendEncryptedText = ({ receiverUid, text, frontId, deviceLabel = null }) => sendEncryptedPayload({
+	receiverUid,
+	frontId,
+	deviceLabel,
+	payload: { type: 'text', text },
+});
 
 const loadSignedPrekeyPrivate = async (signedPrekeyId) => {
 	const archived = await readIdentity('keys', `signed-prekey-private:${signedPrekeyId}`);
@@ -397,8 +408,12 @@ const decryptWithCachedKey = async (messageKey, envelope) => {
 		unb64(envelope.ciphertext),
 	);
 	const payload = JSON.parse(decoder.decode(plaintext));
-	if (payload?.type !== 'text' || typeof payload.text !== 'string') throw new Error('e2ee_invalid_plaintext');
-	return payload.text;
+	if (!payload || !['text', 'attachment'].includes(payload.type)) throw new Error('e2ee_invalid_plaintext');
+	if (payload.type === 'text' && typeof payload.text !== 'string') throw new Error('e2ee_invalid_plaintext');
+	if (payload.type === 'attachment' && (!payload.attachment?.uid || !payload.attachment?.key || !payload.attachment?.nonce)) {
+		throw new Error('e2ee_invalid_attachment_payload');
+	}
+	return payload;
 };
 
 const decryptInbound = async (envelope) => {
@@ -429,9 +444,9 @@ const decryptInbound = async (envelope) => {
 		current = { ...current, chainKey: step.nextChainKey, nextCounter: counter + 1 };
 	}
 	await sessionPut(current);
-	const text = await decryptWithCachedKey(targetKey, envelope);
+	const payload = await decryptWithCachedKey(targetKey, envelope);
 	if (consumedOneTimePrekeyId !== null) await deleteIdentityPrekey(consumedOneTimePrekeyId);
-	return text;
+	return payload;
 };
 
 const decryptOwnOutbound = async (envelope) => {
@@ -440,16 +455,49 @@ const decryptOwnOutbound = async (envelope) => {
 	return decryptWithCachedKey(cached.messageKey, envelope);
 };
 
+const projectDecryptedPayload = (message, payload) => {
+	if (payload.type === 'text') {
+		return { ...message, content: payload.text, encrypted: true, encryption_version: VERSION, e2ee_locked: false };
+	}
+	const attachment = payload.attachment;
+	const kind = ['image', 'video', 'audio', 'voice', 'file'].includes(attachment.kind) ? attachment.kind : 'file';
+	const privateFile = {
+		url: '',
+		name: attachment.name || 'Файл',
+		type: attachment.mime_type || 'application/octet-stream',
+		size: Number(attachment.size) || 0,
+		duration: Number(attachment.duration) || 0,
+		waveform: Array.isArray(attachment.waveform) ? attachment.waveform : [],
+		encrypted_attachment: attachment,
+	};
+	return {
+		...message,
+		content_type: kind,
+		content: typeof payload.caption === 'string' ? payload.caption : '',
+		media_metadata: {
+			files: [privateFile],
+			duration: privateFile.duration,
+			waveform: privateFile.waveform,
+			voice: kind === 'voice' ? '' : undefined,
+			transcription: { status: 'none', text: '' },
+			encrypted_attachment: true,
+		},
+		encrypted: true,
+		encryption_version: VERSION,
+		e2ee_locked: false,
+	};
+};
+
 export const decryptMessageForCurrentDevice = async (message) => {
 	if (message?.content_type !== 'e2ee') return message;
 	const registration = await getDeviceRegistrationPayload();
 	const envelope = (message.envelopes || []).find((item) => item.recipient_device_uid === registration.device_uid);
 	if (!envelope) return { ...message, content: 'Сообщение зашифровано для другого устройства', e2ee_locked: true };
 	try {
-		const text = envelope.sender_device_uid === registration.device_uid
+		const payload = envelope.sender_device_uid === registration.device_uid
 			? await decryptOwnOutbound(envelope)
 			: await decryptInbound(envelope);
-		return { ...message, content: text, encrypted: true, encryption_version: VERSION, e2ee_locked: false };
+		return projectDecryptedPayload(message, payload);
 	} catch (error) {
 		console.warn('Не удалось расшифровать Messenger envelope', error);
 		return { ...message, content: 'Не удалось расшифровать сообщение на этом устройстве', encrypted: true, e2ee_locked: true };
