@@ -12,13 +12,22 @@ import "@/assets/messaging-ux.css";
 import "@/assets/mobile-density.css";
 
 const bootstrap = async () => {
-	// Protected routes (especially a direct /admin page load) must see the
-	// restored identity before the router runs its first navigation guard.
-	// App.vue still owns realtime/background-service startup; this only hydrates
-	// the authentication/role state required to choose the correct route.
+	// The access token intentionally exists only in JS memory, so a full reload
+	// starts with an HttpOnly refresh cookie + a non-authoritative local session
+	// hint. Refresh BEFORE installing Vue Router: otherwise route components see
+	// cached `auth=true` and immediately fire protected requests with no bearer
+	// token, producing the 401 storm visible in the browser console.
 	await store.dispatch('initializeUser');
 	if (store.getters.isAuth) {
-		await store.dispatch('syncIdentity').catch(() => null);
+		try {
+			const restored = await store.dispatch('restoreSessionAccess');
+			if (restored) await store.dispatch('syncIdentity');
+		} catch (error) {
+			// Keep the cached shell only for transient network/server failures. App.vue
+			// owns retry UX. A definitive 401 is handled inside restoreSessionAccess
+			// and clears auth before the initial route guard runs.
+			console.warn('Не удалось восстановить сессию до запуска интерфейса:', error);
+		}
 	}
 
 	const app = createApp(App);
