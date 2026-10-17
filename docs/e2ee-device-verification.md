@@ -20,6 +20,18 @@ The inputs are canonicalized and hashed with SHA-256 using a versioned PubChat d
 
 Users must compare the number through an independent trusted channel, for example in person or during a trusted voice/video conversation. Pressing **Код совпал** stores that manual decision locally for the current browser device.
 
+### QR comparison
+
+The security panel can render the current pairwise safety number as a local QR code. The QR payload is intentionally small and versioned:
+
+`pubchat-e2ee-v1:<40 decimal safety-number digits>`
+
+The QR image is generated entirely in the browser. No safety number, Account/device identifier, public key or verification payload is sent to a third-party QR service.
+
+On browsers with `BarcodeDetector` QR support, PubChat can use the device camera to scan the peer's QR locally. A scan marks a device verified only if the decoded versioned payload exactly equals the safety number PubChat has just derived for the selected current device pair. A mismatched, malformed or unversioned QR never sets local verification state. Browsers without local QR detection expose a manual paste fallback for a QR value read by the system camera or another trusted device.
+
+QR comparison changes only the ergonomics of independent verification; it does not make the PubChat server a trusted attester and it is not a substitute for key transparency.
+
 ## Device changes
 
 The browser stores the last acknowledged public device directory for the peer. A newly added device, a removed device, or a different identity key under an existing device ID changes the directory state and produces **Требуется повторная проверка**. Existing verification records only remain valid while their exact safety number and peer-device fingerprint still match.
@@ -38,7 +50,7 @@ When a fresh prekey bundle is claimed for a device, its Ed25519/X25519 identity 
 
 Manual verification state is stored locally in the same origin-scoped IndexedDB used by the browser E2EE session layer. It is not synchronized as a server trust assertion and must be repeated independently on another device.
 
-The current server remains the device-key directory. Safety-number comparison detects substitution when the two users compare independently, but PubChat does **not** yet provide a public key-transparency log or automatic malicious-directory-server resistance. QR comparison and key transparency are follow-up hardening items.
+The current server remains the device-key directory. Safety-number or QR comparison detects substitution when the two users compare independently, but PubChat does **not** yet provide a public key-transparency log or automatic malicious-directory-server resistance. Key transparency remains separate follow-up hardening.
 
 ## Relationship to conversation policy
 
