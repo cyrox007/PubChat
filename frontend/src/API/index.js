@@ -16,6 +16,24 @@ let csrfPromise = null;
 let isRefreshing = false;
 let failedQueue = [];
 
+const normalizeAvatarUrl = (value) => {
+    if (!value || typeof value !== 'string') return value;
+    if (/^(https?:|blob:|data:)/i.test(value)) return value;
+    const path = value.startsWith('/') ? value : `/${value}`;
+    return `${window.location.origin}${path}`;
+};
+
+const normalizePublicAssetFields = (value) => {
+    if (Array.isArray(value)) return value.map((item) => normalizePublicAssetFields(item));
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+        Object.entries(value).map(([key, child]) => [
+            key,
+            key === 'avatar' ? normalizeAvatarUrl(child) : normalizePublicAssetFields(child),
+        ]),
+    );
+};
+
 export const clearCsrfToken = () => {
     csrfToken = null;
 };
@@ -47,7 +65,6 @@ const clearSessionStorage = () => {
     localStorage.removeItem('auth');
     localStorage.removeItem('user');
     localStorage.removeItem('identity');
-    // Remove bearer tokens left by pre-Realtime-v2 builds.
     localStorage.removeItem('access_token');
 };
 
@@ -88,7 +105,10 @@ $api.interceptors.request.use(async (requestConfig) => {
 });
 
 $api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        response.data = normalizePublicAssetFields(response.data);
+        return response;
+    },
     async (error) => {
         const originalRequest = error.config;
         const status = error.response?.status;
@@ -159,7 +179,6 @@ $api.interceptors.response.use(
             }
         }
 
-        // 403 is an authorization decision, not an expired session.
         return Promise.reject(error);
     }
 );
