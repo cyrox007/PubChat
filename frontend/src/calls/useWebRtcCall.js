@@ -2,12 +2,14 @@ import { computed, reactive } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 
 import CallService from '@/API/CallService';
+import CryptoService from '@/API/CryptoService';
 import RealtimeService from '@/API/RealtimeService';
 
 const state = reactive({
 	cameraEnabled: true,
 	callUid: null,
 	connectionState: 'idle',
+	deviceIdentityBound: false,
 	error: null,
 	iceTransportPolicy: null,
 	incomingSdp: null,
@@ -16,11 +18,14 @@ const state = reactive({
 	mode: 'audio',
 	muted: false,
 	peer: null,
+	peerDirectoryContinuity: 'not_checked',
 	peerUid: null,
 	phase: 'idle',
 	remoteStream: null,
+	securityClaim: null,
 	signalingE2ee: false,
 	socket: null,
+	verifiedApplicationE2ee: false,
 });
 
 let peerConnection = null;
@@ -45,10 +50,32 @@ const loadIceConfig = async () => {
 	const response = await CallService.iceConfig();
 	const iceServers = Array.isArray(response.data?.ice_servers) ? response.data.ice_servers : [];
 	const iceTransportPolicy = response.data?.ice_transport_policy === 'relay' ? 'relay' : 'all';
+	const security = response.data?.security || {};
 	state.iceTransportPolicy = iceTransportPolicy;
-	state.mediaSecurity = response.data?.media_security || 'webrtc-dtls-srtp';
-	state.signalingE2ee = response.data?.signaling_e2ee === true;
+	state.mediaSecurity = security.media_transport || response.data?.media_security || 'webrtc-dtls-srtp';
+	state.signalingE2ee = security.signaling_e2ee === true || response.data?.signaling_e2ee === true;
+	state.deviceIdentityBound = security.device_identity_bound === true;
+	state.verifiedApplicationE2ee = security.verified_application_e2ee === true;
+	state.securityClaim = security.claim || 'transport-encrypted-unverified';
 	return { iceServers, iceTransportPolicy };
+};
+
+const checkPeerDirectoryContinuity = async () => {
+	if (!state.peerUid) throw new Error('call_peer_missing');
+	state.peerDirectoryContinuity = 'checking';
+	try {
+		const response = await CryptoService.accountDevices(state.peerUid);
+		const policy = response.data?.encryption || null;
+		const devices = response.data?.devices || [];
+		if (policy?.effective_mode === 'plaintext') {
+			state.peerDirectoryContinuity = 'plaintext';
+			return;
+		}
+		state.peerDirectoryContinuity = devices.length && response.data?.directory_checkpoint ? 'checked' : 'not_available';
+	} catch (error) {
+		state.peerDirectoryContinuity = 'conflict';
+		throw error;
+	}
 };
 
 const cleanupPeer = () => {
@@ -80,6 +107,10 @@ const resetCall = () => {
 	state.iceTransportPolicy = null;
 	state.mediaSecurity = null;
 	state.signalingE2ee = false;
+	state.deviceIdentityBound = false;
+	state.verifiedApplicationE2ee = false;
+	state.securityClaim = null;
+	state.peerDirectoryContinuity = 'not_checked';
 	setPhase('idle');
 };
 
@@ -149,6 +180,7 @@ const handleSignal = async (data) => {
 		state.peer = { uid: fromUid };
 		state.mode = data.mode === 'video' ? 'video' : 'audio';
 		state.incomingSdp = data.sdp;
+		state.peerDirectoryContinuity = 'pending';
 		try { sendSignal('call_ringing'); } catch (_) {}
 		setPhase('incoming');
 		return;
@@ -168,12 +200,18 @@ const handleSignal = async (data) => {
 	}
 	if (data.signal_type === 'call_decline') {
 		cleanupPeer();
-		setPhase('ended', data.reason === 'busy' ? 'Пользователь занят' : 'Звонок отклонён');
+		const reason = data.reason === 'busy'
+			? 'Пользователь занят'
+			: data.reason === 'security_unavailable'
+				? 'Звонок отклонён: не удалось подтвердить состояние E2EE-устройств'
+				: 'Звонок отклонён';
+		setPhase('ended', reason);
 		return;
 	}
 	if (data.signal_type === 'call_end') {
 		cleanupPeer();
 		setPhase('ended', data.reason || null);
+		return;
 	}
 };
 
@@ -247,6 +285,12 @@ const disconnect = () => {
 	if (state.phase !== 'idle') resetCall();
 };
 
+const securityErrorMessage = (error) => {
+	if (error?.code === 'e2ee_directory_transparency_conflict') return 'Проверка истории E2EE-устройств выявила конфликт. Звонок не начат.';
+	if (error?.code === 'e2ee_devices_not_ready') return 'E2EE выбран, но криптографические устройства собеседника не готовы.';
+	return null;
+};
+
 const start = async (peer, mode = 'audio') => {
 	if (state.phase !== 'idle' && state.phase !== 'ended') throw new Error('Call already active');
 	if (state.phase === 'ended') resetCall();
@@ -256,7 +300,9 @@ const start = async (peer, mode = 'audio') => {
 	state.peer = typeof peer === 'string' ? { uid: peer } : peer;
 	state.mode = mode === 'video' ? 'video' : 'audio';
 	try {
-		const [configuration, stream] = await Promise.all([loadIceConfig(), acquireMedia(state.mode)]);
+		const configuration = await loadIceConfig();
+		await checkPeerDirectoryContinuity();
+		const stream = await acquireMedia(state.mode);
 		const pc = createPeerConnection(configuration);
 		attachLocalTracks(pc, stream);
 		const offer = await pc.createOffer();
@@ -265,9 +311,9 @@ const start = async (peer, mode = 'audio') => {
 		setPhase('outgoing');
 	} catch (error) {
 		cleanupPeer();
-		setPhase('error', error?.response?.data?.detail?.error_type === 'call_ice_unavailable'
+		setPhase('error', securityErrorMessage(error) || (error?.response?.data?.detail?.error_type === 'call_ice_unavailable'
 			? 'Безопасная конфигурация звонка сейчас недоступна'
-			: 'Не удалось начать звонок');
+			: 'Не удалось начать звонок'));
 		throw error;
 	}
 };
@@ -275,7 +321,9 @@ const start = async (peer, mode = 'audio') => {
 const accept = async () => {
 	if (state.phase !== 'incoming' || !state.incomingSdp) return;
 	try {
-		const [configuration, stream] = await Promise.all([loadIceConfig(), acquireMedia(state.mode)]);
+		const configuration = await loadIceConfig();
+		await checkPeerDirectoryContinuity();
+		const stream = await acquireMedia(state.mode);
 		const pc = createPeerConnection(configuration);
 		attachLocalTracks(pc, stream);
 		await pc.setRemoteDescription(new RTCSessionDescription(state.incomingSdp));
@@ -285,10 +333,11 @@ const accept = async () => {
 		sendSignal('call_answer', { sdp: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription });
 		state.incomingSdp = null;
 		setPhase('connecting');
-	} catch (_) {
-		try { sendSignal('call_decline', { reason: 'media_unavailable' }); } catch (_) {}
+	} catch (error) {
+		const securityMessage = securityErrorMessage(error);
+		try { sendSignal('call_decline', { reason: securityMessage ? 'security_unavailable' : 'media_unavailable' }); } catch (_) {}
 		cleanupPeer();
-		setPhase('error', 'Не удалось подготовить защищённое соединение или получить доступ к камере/микрофону');
+		setPhase('error', securityMessage || 'Не удалось подготовить защищённое соединение или получить доступ к камере/микрофону');
 	}
 };
 
