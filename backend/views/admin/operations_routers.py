@@ -7,6 +7,7 @@ from components.realtime import realtime_service
 from components.realtime.pool_metrics import realtime_pool_health
 from database import Database
 from utils.database_metrics import database_pool_health
+from utils.http_metrics import http_runtime_metrics
 
 
 def install(app: FastAPI) -> None:
@@ -31,5 +32,9 @@ def install(app: FastAPI) -> None:
     @router.get("/postgres-pool")
     async def postgres_pool_metrics():
         return {"status": "ok", "metrics": database_pool_health()}
+
+    @router.get("/http")
+    async def http_metrics():
+        return {"status": "ok", "metrics": http_runtime_metrics.snapshot()}
 
     app.include_router(router)
