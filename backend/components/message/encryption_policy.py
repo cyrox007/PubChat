@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from uuid import UUID
 
@@ -9,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.crypto_model import DeviceCryptographicIdentity
 from components.message.encryption_policy_model import PrivateConversationEncryption
-from settings import config
 
 
 SYSTEM_POLICIES = frozenset({"disabled", "optional", "required"})
@@ -17,7 +17,7 @@ CONVERSATION_MODES = frozenset({"plaintext", "e2ee"})
 
 
 def system_policy() -> str:
-    value = str(config.MESSENGER_E2EE_POLICY or "optional").strip().lower()
+    value = os.getenv("MESSENGER_E2EE_POLICY", "optional").strip().lower()
     if value not in SYSTEM_POLICIES:
         raise RuntimeError("MESSENGER_E2EE_POLICY must be disabled, optional or required")
     return value
