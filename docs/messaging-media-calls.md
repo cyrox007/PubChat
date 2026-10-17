@@ -16,7 +16,30 @@ Signaling uses `/ws/v2/calls`; media is WebRTC and is not proxied through the Pu
 
 The media channel uses browser WebRTC DTLS-SRTP. PubChat's signaling and TURN servers do not receive decoded microphone/camera media. A TURN relay forwards encrypted WebRTC packets and does not terminate the peer DTLS-SRTP session.
 
-This is **not yet the same security claim as verified application-level E2EE against a compromised signaling server**. SDP fingerprints and ICE candidates are currently relayed by PubChat signaling, so the server participates in peer setup and is not yet cryptographically excluded from identity verification. Do not label calls as "verified E2EE" until device cryptographic identity/key verification is implemented and bound to the call handshake.
+### Security claim for 1.0
+
+The call security contract is explicit and deliberately narrower than Messenger message E2EE:
+
+- `media_transport=webrtc-dtls-srtp`;
+- `media_encrypted=true`;
+- `signaling_e2ee=false`;
+- `device_identity_bound=false`;
+- `verified_application_e2ee=false`;
+- `claim=transport-encrypted-unverified`.
+
+This means WebRTC encrypts peer media in transit, but PubChat does **not** claim that the WebRTC DTLS fingerprint is cryptographically bound to the verified PubChat Account/device identity. SDP fingerprints and ICE candidates are relayed through PubChat signaling, so the signaling service still participates in peer setup.
+
+The call UI exposes this distinction instead of showing a generic lock as if it meant verified application E2EE.
+
+### Device-directory continuity before media capture
+
+Outgoing call setup and incoming call acceptance both run the same `CryptoService.accountDevices()` boundary used by Messenger E2EE before requesting camera/microphone access.
+
+For an E2EE conversation this validates the locally remembered device-directory checkpoint and any required append-only history continuity. A rollback, same-sequence fork or broken history chain fails closed and the call is not started/accepted. The incoming side returns the allow-listed `security_unavailable` decline reason.
+
+For a plaintext conversation the directory continuity layer is marked not applicable. The call remains ordinary WebRTC DTLS-SRTP and is not promoted to verified E2EE.
+
+This continuity check protects against proceeding through a device-directory state that the client already considers inconsistent. It still does **not** bind the WebRTC DTLS certificate/fingerprint to a specific verified E2EE device. Full verified call E2EE remains a future protocol layer, not a 1.0 claim.
 
 ### ICE/TURN credentials
 
@@ -46,10 +69,10 @@ Account-level access restrictions disconnect Messenger, Room and call sockets.
 
 ## Rollout
 
-1. Apply Alembic migration `m1b7e5a99001`.
+1. Apply database migrations through the current Alembic head.
 2. Configure an STT provider, then schedule the transcription worker.
 3. Deploy coturn with `use-auth-secret`/`static-auth-secret`, configure `CALL_ICE_TURN_URLS` and `CALL_ICE_TURN_SHARED_SECRET`, and remove any old static TURN credentials from frontend deployment variables.
 4. Decide whether production uses normal ICE (`CALL_ICE_PRIVACY_MODE=false`) or relay-only privacy mode after sizing TURN capacity.
 5. Validate audio/video recording permissions on Android Chrome, iOS Safari and desktop Chromium/Firefox.
 6. Validate calling across Wi-Fi ↔ cellular and two different NATs, not only on the same LAN.
-7. Do not advertise calls as verified E2EE until device identity and call-key/fingerprint verification are implemented.
+7. Keep the 1.0 product claim precise: WebRTC media is DTLS-SRTP encrypted; verified application-level E2EE for calls is not implemented until the call handshake is bound to verified PubChat device identity.

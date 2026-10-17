@@ -21,7 +21,7 @@ CALL_SIGNAL_LIMIT = 180
 CALL_SIGNAL_WINDOW_SECONDS = 10
 CALL_OFFER_LIMIT = 6
 CALL_OFFER_WINDOW_SECONDS = 60
-CALL_REASONS = {"declined", "busy", "ended", "media_unavailable", "connection_failed"}
+CALL_REASONS = {"declined", "busy", "ended", "media_unavailable", "security_unavailable", "connection_failed"}
 
 
 def _normalized_call_uid(value: object) -> str:
