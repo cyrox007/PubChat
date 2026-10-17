@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
@@ -18,6 +18,11 @@ from components.device.crypto_service import (
     rotate_signed_prekey,
 )
 from components.device.directory import public_devices
+from components.message.e2ee_attachment import (
+    delete_pending_encrypted_attachment,
+    get_encrypted_attachment,
+    store_encrypted_attachment,
+)
 from components.message.e2ee_delivery import history_envelopes, send_encrypted_message
 from components.message.e2ee_schemas import EncryptedMessageSendRequest, EnvelopeHistoryRequest
 from components.moderation.policy import assert_allowed
@@ -134,6 +139,62 @@ def install(app: FastAPI) -> None:
         bundle = await claim_prekey_bundle(db, target_account_uid=target_account_uid)
         return {"status": "ok", "bundle": bundle}
 
+    @router.post("/attachments/{attachment_uid}", status_code=status.HTTP_201_CREATED)
+    async def upload_e2ee_attachment(
+        attachment_uid: UUID,
+        file: UploadFile = File(...),
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account_uid = _account_uid(current_user)
+        await assert_allowed(db, account_uid, "messenger.send")
+        allowed = await realtime_service.allow_action(
+            user_uid=account_uid,
+            bucket="encrypted-attachment",
+            limit=max(3, config.REALTIME_MESSAGE_RATE_LIMIT),
+            window_seconds=config.REALTIME_MESSAGE_RATE_WINDOW_SECONDS,
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "error_type": "encrypted_attachment_rate_limited",
+                    "retry_after": config.REALTIME_MESSAGE_RATE_WINDOW_SECONDS,
+                },
+            )
+        result = await store_encrypted_attachment(
+            db,
+            account_uid=account_uid,
+            attachment_uid=attachment_uid,
+            upload=file,
+        )
+        return {"status": "ok", **result}
+
+    @router.get("/attachments/{attachment_uid}")
+    async def download_e2ee_attachment(
+        attachment_uid: UUID,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        return await get_encrypted_attachment(
+            db,
+            account_uid=_account_uid(current_user),
+            attachment_uid=attachment_uid,
+        )
+
+    @router.delete("/attachments/{attachment_uid}")
+    async def remove_pending_e2ee_attachment(
+        attachment_uid: UUID,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        result = await delete_pending_encrypted_attachment(
+            db,
+            account_uid=_account_uid(current_user),
+            attachment_uid=attachment_uid,
+        )
+        return {"status": "ok", **result}
+
     @router.post("/messages")
     async def send_e2ee_message(
         payload: EncryptedMessageSendRequest,
@@ -168,6 +229,7 @@ def install(app: FastAPI) -> None:
             sender_device_uid=payload.sender_device_uid,
             front_id=payload.front_id,
             envelopes=[item.model_dump() for item in payload.envelopes],
+            attachment_uid=payload.attachment_uid,
         )
         return {"status": "ok", **result}
 

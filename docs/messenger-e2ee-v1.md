@@ -1,12 +1,12 @@
 # Messenger E2EE v1
 
-PubChat Messenger E2EE v1 encrypts **text direct messages** end-to-end between registered cryptographic devices. The server routes ciphertext and retains delivery metadata, but it does not receive the text plaintext for v1-encrypted messages.
+PubChat Messenger E2EE v1 encrypts direct-message payloads end-to-end between registered cryptographic devices. Text uses the per-device message envelopes directly; images, video, audio, voice messages and files additionally use the opaque encrypted-attachment transport documented in `messenger-e2ee-attachments-v1.md`.
 
-This phase builds on `device-cryptographic-identity-v1.md`. Existing historical plaintext messages remain plaintext. Media/file/voice messages are not migrated to this protocol in v1 and continue to use the existing transport until encrypted attachment envelopes are implemented.
+This protocol builds on `device-cryptographic-identity-v1.md`. Existing historical plaintext messages remain plaintext. When both participants are crypto-capable, new supported Messenger content is not silently downgraded to plaintext after a cryptographic failure.
 
 ## Threat boundary
 
-The v1 protocol protects message text against disclosure from the application database, backups, logs and ordinary server-side message handling. The server can see sender/receiver Account IDs, device routing IDs, timestamps, message existence/size, session IDs and counters.
+The v1 protocol protects message text and supported attachment plaintext against disclosure from the application database, backups, logs and ordinary server-side message handling. The server can still see sender/receiver Account IDs, device routing IDs, timestamps, message existence/size, session IDs, counters and encrypted-attachment transport metadata such as ciphertext size.
 
 Each device keeps X25519/Ed25519 private key material in its browser origin. E2EE session chain keys and cached per-message history keys are stored as non-extractable Web Crypto `CryptoKey` objects in IndexedDB.
 
@@ -38,15 +38,7 @@ For counter `n`:
 
 The message key is imported as AES-256-GCM. The next chain key replaces the previous chain key. The old chain key is not persisted after the ratchet advances.
 
-AES-GCM associated data binds:
-
-- protocol version;
-- sender device UID;
-- recipient device UID;
-- session UUID;
-- counter.
-
-This prevents ciphertext from being moved to another device/session/counter without authentication failure.
+AES-GCM associated data binds protocol version, sender device UID, recipient device UID, session UUID and counter. This prevents ciphertext from being moved to another device/session/counter without authentication failure.
 
 The receiver accepts a forward gap of at most 64 counters and derives intermediate message keys so out-of-order delivery can still be decrypted. Per-message keys are retained locally for conversation history; this is intentionally separate from the forward-only session chain. A compromise of local unlocked history storage can therefore expose locally retained history even though the server never receives those keys.
 
@@ -64,43 +56,34 @@ Revoked devices are excluded from new sends. Revoking the current local cryptogr
 
 ## Server persistence
 
-An encrypted DM is represented by:
-
-- one ordinary `private_messages` row with `content_type = "e2ee"`, `text = NULL` and only protocol metadata;
-- one `private_message_envelopes` row per target device.
+An encrypted DM is represented by one ordinary `private_messages` row with `content_type = "e2ee"`, `text = NULL` and protocol-only metadata, plus one `private_message_envelopes` row per target device.
 
 Envelope rows contain ciphertext, nonce, target device/account, sender device, session ID, counter and optional initial public header. There is no plaintext/content column in the envelope table.
 
-Database uniqueness enforces:
+For attachment messages, a separate `encrypted_private_attachments` row points at an opaque ciphertext blob. It does not contain the attachment content key, AES nonce, filename, MIME type or original media kind. Those private values exist only in the per-device encrypted payload.
 
-- one envelope per `(message, recipient_device)`;
-- one persisted message per `(recipient_device, session_id, counter)`.
-
-The second constraint prevents a client from persisting the same ratchet counter as two distinct messages even if it changes its request id.
+Database uniqueness enforces one envelope per `(message, recipient_device)` and one persisted message per `(recipient_device, session_id, counter)`. The second constraint prevents a client from persisting the same ratchet counter as two distinct messages even if it changes its request id.
 
 ## Transport and fallback
 
-Encrypted text is sent through authenticated `POST /crypto/v1/messages`. Realtime delivery still uses the existing Messenger user channel, but only the ciphertext envelopes for the receiving Account are included.
+Encrypted messages are sent through authenticated `POST /crypto/v1/messages`. Realtime delivery still uses the existing Messenger user channel, but only the ciphertext envelopes for the receiving Account are included.
 
 Conversation history is loaded through the existing Messenger conversation contract. For rows with `content_type = "e2ee"`, the client then requests only the envelope rows that belong to its authenticated Account and decrypts the envelope addressed to the current device.
 
-A text message falls back to the legacy plaintext transport **only when the peer has no registered cryptographic devices**. If encryption is expected and cryptographic setup/encryption fails, the client blocks the send rather than silently downgrading it.
-
-Media/file/voice messages are outside v1 and continue through the legacy path; the UI must not label those messages as E2EE.
+Text and supported attachments fall back to the legacy transport **only when the peer has no registered cryptographic devices**. If encryption is expected and cryptographic setup/encryption/upload fails, the client blocks the send rather than silently downgrading it.
 
 ## Notifications
 
-The backend's notification pipeline receives no encrypted text body. Push/in-app delivery continues to use generic Messenger notification metadata. The decrypted message text exists only in the receiving client after envelope decryption.
+The backend's notification pipeline receives no encrypted text or attachment plaintext. Push/in-app delivery continues to use generic Messenger notification metadata. Plaintext exists only in the receiving client after envelope/attachment decryption.
 
 ## Moderation caveat
 
-Server-side moderation cannot inspect v1 E2EE text because the server does not possess plaintext or message keys. The existing report action can still identify the encrypted message row, but a complete E2EE-aware abuse report flow must explicitly allow the reporting client to attach the selected decrypted message/evidence with user consent. That evidence flow is a separate Trust & Safety task and must not become a hidden backdoor for routine server-side decryption.
+Server-side moderation cannot inspect E2EE text or attachment plaintext because the server does not possess plaintext or content keys. The existing report action can still identify the encrypted message row, but a complete E2EE-aware abuse report flow must explicitly allow the reporting client to attach selected decrypted evidence with user consent. That evidence flow is a separate Trust & Safety task and must not become a hidden backdoor for routine server-side decryption.
 
 ## Next cryptographic work
 
 After this phase, the next security increments are:
 
-- encrypted attachment/media keys and ciphertext upload;
 - safety-number / QR verification UX and verified-device state;
 - explicit device-change warnings;
 - optional DH Double Ratchet re-keying for long-lived sessions;

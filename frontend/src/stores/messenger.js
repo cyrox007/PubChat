@@ -1,6 +1,8 @@
 import RealtimeService from '@/API/RealtimeService';
+import { sendEncryptedAttachment } from '@/crypto/encryptedAttachment';
 import {
 	decryptMessageForCurrentDevice,
+	hasPeerCryptoDevices,
 	hydrateConversationEnvelopes,
 	sendEncryptedText,
 } from '@/crypto/messengerE2EE';
@@ -20,6 +22,15 @@ const clearHeartbeatTimer = () => {
 };
 
 const messageKey = (message) => message?.uid || message?.frontId || null;
+const mediaTypes = new Set(['image', 'video', 'audio', 'voice', 'file']);
+const mediaKindForFile = (file, fallback = 'file') => {
+	if (fallback === 'voice') return 'voice';
+	const type = String(file?.type || '').toLowerCase();
+	if (type.startsWith('image/')) return 'image';
+	if (type.startsWith('video/')) return 'video';
+	if (type.startsWith('audio/')) return fallback === 'voice' ? 'voice' : 'audio';
+	return 'file';
+};
 
 export default {
 	namespaced: true,
@@ -323,15 +334,10 @@ export default {
 					});
 					break;
 				case 'ping':
-					if (state.socket?.readyState === WebSocket.OPEN) {
-						state.socket.send(JSON.stringify({ type: 'pong' }));
-					}
+					if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ type: 'pong' }));
 					break;
 				case 'rate_limited':
-					commit('SET_REALTIME_NOTICE', {
-						type: 'warning',
-						message: 'Слишком много сообщений подряд. Попробуйте через несколько секунд.',
-					});
+					commit('SET_REALTIME_NOTICE', { type: 'warning', message: 'Слишком много сообщений подряд. Попробуйте через несколько секунд.' });
 					break;
 				case 'error':
 					commit('SET_REALTIME_NOTICE', {
@@ -351,16 +357,19 @@ export default {
 		},
 
 		async sendPrivateMessage({ state, commit }, messageData) {
-			const canEncrypt = (messageData.content_type || 'text') === 'text'
-				&& typeof messageData.content === 'string'
-				&& messageData.content.length > 0;
-			if (canEncrypt) {
+			const contentType = messageData.content_type || 'text';
+			const deviceLabel = navigator.userAgentData?.platform || navigator.platform || 'Browser';
+			const isText = contentType === 'text' && typeof messageData.content === 'string' && messageData.content.length > 0;
+			const files = Array.isArray(messageData.media_metadata?.files) ? messageData.media_metadata.files : [];
+			const isMedia = mediaTypes.has(contentType) && files.length > 0;
+
+			if (isText) {
 				try {
 					const result = await sendEncryptedText({
 						receiverUid: messageData.receiver_uid,
 						text: messageData.content,
 						frontId: messageData.frontId,
-						deviceLabel: navigator.userAgentData?.platform || navigator.platform || 'Browser',
+						deviceLabel,
 					});
 					if (result.encrypted) return result;
 					if (result.reason !== 'peer_no_crypto_devices') throw new Error(result.reason || 'e2ee_unavailable');
@@ -374,6 +383,40 @@ export default {
 					}
 				}
 			}
+
+			if (isMedia) {
+				let cryptoCapable = false;
+				try {
+					cryptoCapable = await hasPeerCryptoDevices(messageData.receiver_uid);
+				} catch (error) {
+					commit('SET_REALTIME_NOTICE', { type: 'error', message: 'Не удалось проверить защищённую доставку вложения.' });
+					throw error;
+				}
+				if (cryptoCapable) {
+					try {
+						const results = [];
+						for (let index = 0; index < files.length; index += 1) {
+							const file = files[index];
+							results.push(await sendEncryptedAttachment({
+								receiverUid: messageData.receiver_uid,
+								file,
+								kind: mediaKindForFile(file, contentType),
+								caption: index === 0 ? messageData.content : '',
+								frontId: index === 0 ? messageData.frontId : crypto.randomUUID(),
+								deviceLabel,
+							}));
+						}
+						return { encrypted: true, attachments: results.length };
+					} catch (error) {
+						commit('SET_REALTIME_NOTICE', {
+							type: 'error',
+							message: 'Защищённая отправка вложения не удалась. В открытом виде файл не отправлен.',
+						});
+						throw error;
+					}
+				}
+			}
+
 			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
 				throw new Error('Личные сообщения сейчас переподключаются');
 			}
@@ -383,11 +426,7 @@ export default {
 
 		requestConversation({ state }, { otherUserId, requestId }) {
 			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') return;
-			state.socket.send(JSON.stringify({
-				action: 'get_conversation',
-				other_user_uid: otherUserId,
-				request_id: requestId,
-			}));
+			state.socket.send(JSON.stringify({ action: 'get_conversation', other_user_uid: otherUserId, request_id: requestId }));
 		},
 
 		markMessageAsRead({ state, commit }, messageId) {
@@ -440,10 +479,7 @@ export default {
 
 		restoreStatusSubscriptions({ state }) {
 			if (!state.statusSubscriptions.size || state.socket?.readyState !== WebSocket.OPEN) return;
-			state.socket.send(JSON.stringify({
-				action: 'subscribe_status',
-				userIds: [...state.statusSubscriptions],
-			}));
+			state.socket.send(JSON.stringify({ action: 'subscribe_status', userIds: [...state.statusSubscriptions] }));
 		},
 	},
 };
