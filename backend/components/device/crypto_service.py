@@ -97,28 +97,34 @@ async def _add_one_time_prekeys(
     if not prekeys:
         return await _available_prekey_count(db, device.uid)
 
+    requested = {item.id: item for item in prekeys}
+    existing_result = await db.execute(
+        select(DeviceOneTimePreKey).where(
+            DeviceOneTimePreKey.device_uid == device.uid,
+            DeviceOneTimePreKey.prekey_id.in_(requested.keys()),
+        )
+    )
+    existing = {int(item.prekey_id): item for item in existing_result.scalars().all()}
+    conflicting = sorted(
+        prekey_id
+        for prekey_id, record in existing.items()
+        if record.public_key != requested[prekey_id].public_key
+    )
+    if conflicting:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_type": "one_time_prekey_id_conflict", "ids": conflicting},
+        )
+
+    new_prekeys = [item for item in prekeys if item.id not in existing]
     current_count = await _available_prekey_count(db, device.uid)
-    if current_count + len(prekeys) > MAX_AVAILABLE_ONE_TIME_PREKEYS:
+    if current_count + len(new_prekeys) > MAX_AVAILABLE_ONE_TIME_PREKEYS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error_type": "too_many_one_time_prekeys", "max_available": MAX_AVAILABLE_ONE_TIME_PREKEYS},
         )
 
-    requested_ids = [item.id for item in prekeys]
-    existing = await db.execute(
-        select(DeviceOneTimePreKey.prekey_id).where(
-            DeviceOneTimePreKey.device_uid == device.uid,
-            DeviceOneTimePreKey.prekey_id.in_(requested_ids),
-        )
-    )
-    existing_ids = {int(value) for value in existing.scalars().all()}
-    if existing_ids:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"error_type": "one_time_prekey_id_conflict", "ids": sorted(existing_ids)},
-        )
-
-    for item in prekeys:
+    for item in new_prekeys:
         db.add(
             DeviceOneTimePreKey(
                 device_uid=device.uid,
@@ -126,8 +132,9 @@ async def _add_one_time_prekeys(
                 public_key=item.public_key,
             )
         )
-    await db.flush()
-    return current_count + len(prekeys)
+    if new_prekeys:
+        await db.flush()
+    return current_count + len(new_prekeys)
 
 
 async def register_device(
@@ -156,11 +163,20 @@ async def register_device(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"error_type": "crypto_device_identity_immutable"},
             )
+        if existing.signed_prekey_id == payload.signed_prekey.id and (
+            existing.signed_prekey_key != payload.signed_prekey.public_key
+            or existing.signed_prekey_signature != payload.signed_prekey.signature
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error_type": "signed_prekey_id_reuse"},
+            )
         existing.device_label = payload.device_label
-        existing.signed_prekey_id = payload.signed_prekey.id
-        existing.signed_prekey_key = payload.signed_prekey.public_key
-        existing.signed_prekey_signature = payload.signed_prekey.signature
-        existing.signed_prekey_created_at = now
+        if existing.signed_prekey_id != payload.signed_prekey.id:
+            existing.signed_prekey_id = payload.signed_prekey.id
+            existing.signed_prekey_key = payload.signed_prekey.public_key
+            existing.signed_prekey_signature = payload.signed_prekey.signature
+            existing.signed_prekey_created_at = now
         existing.updated_at = now
         existing.last_seen_at = now
         device = existing
@@ -213,15 +229,19 @@ async def rotate_signed_prekey(
     signed_prekey: SignedPreKeyInput,
 ) -> dict:
     device = await _device_for_owner(db, account_uid=account_uid, device_uid=device_uid)
-    if signed_prekey.id == device.signed_prekey_id and signed_prekey.public_key != device.signed_prekey_key:
+    if signed_prekey.id == device.signed_prekey_id and (
+        signed_prekey.public_key != device.signed_prekey_key
+        or signed_prekey.signature != device.signed_prekey_signature
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error_type": "signed_prekey_id_reuse"},
         )
-    device.signed_prekey_id = signed_prekey.id
-    device.signed_prekey_key = signed_prekey.public_key
-    device.signed_prekey_signature = signed_prekey.signature
-    device.signed_prekey_created_at = datetime.utcnow()
+    if signed_prekey.id != device.signed_prekey_id:
+        device.signed_prekey_id = signed_prekey.id
+        device.signed_prekey_key = signed_prekey.public_key
+        device.signed_prekey_signature = signed_prekey.signature
+        device.signed_prekey_created_at = datetime.utcnow()
     device.updated_at = datetime.utcnow()
     device.last_seen_at = datetime.utcnow()
     await db.commit()
