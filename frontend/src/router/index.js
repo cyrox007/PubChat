@@ -30,8 +30,9 @@ const router = createRouter({
 			meta: { requestAuth: true, requiresAdmin: true },
 			children: [
 				{ path: '', name: 'AdminDashboardHome', component: () => import('../views/AdminPanel/DashboardView.vue'), meta: { title: 'Управление — PubChat' } },
-				{ path: '/admin/profile/:uid', name: 'AdminProfileView', component: () => import('../views/AdminPanel/AdminProfileView.vue'), meta: { title: 'Управление профилем — PubChat', requestAuth: true, requiresAdmin: true } },
-				{ path: '/admin/profiles', name: 'AdminProfileList', component: () => import('../views/AdminPanel/AdminProfileList.vue'), meta: { title: 'Участники — PubChat', requestAuth: true, requiresAdmin: true } },
+				{ path: 'profiles', name: 'AdminProfileList', component: () => import('../views/AdminPanel/AdminProfileList.vue'), meta: { title: 'Участники — PubChat', requestAuth: true, requiresAdmin: true } },
+				{ path: 'profile/:uid', name: 'AdminProfileView', component: () => import('../views/AdminPanel/AdminProfileView.vue'), meta: { title: 'Управление профилем — PubChat', requestAuth: true, requiresAdmin: true } },
+				{ path: 'operations', name: 'AdminOperations', component: () => import('../views/AdminPanel/AdminOperationsView.vue'), meta: { title: 'Операции — PubChat', requestAuth: true, requiresAdmin: true } },
 			],
 		},
 		{ path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('../views/NotFoundView.vue'), meta: { title: 'Страница не найдена — PubChat' } },
