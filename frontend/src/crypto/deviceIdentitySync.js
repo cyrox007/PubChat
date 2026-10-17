@@ -37,6 +37,15 @@ const archiveCurrentSignedPrekey = async () => {
 	}
 };
 
+const clearE2EESessions = async () => {
+	await new Promise((resolve, reject) => {
+		const request = indexedDB.deleteDatabase('pubchat-e2ee-sessions-v1');
+		request.onsuccess = () => resolve();
+		request.onerror = () => reject(request.error || new Error('e2ee_storage_clear_failed'));
+		request.onblocked = () => reject(new Error('e2ee_storage_clear_blocked'));
+	});
+};
+
 export const ensureRegisteredDevice = async ({ deviceLabel = null, oneTimePrekeyCount = 20 } = {}) => {
 	const payload = await ensureDeviceIdentity({ deviceLabel, oneTimePrekeyCount });
 	const response = await CryptoService.registerDevice(payload);
@@ -64,6 +73,7 @@ export const rotateDeviceSignedPrekey = async () => {
 export const revokeCurrentCryptoDevice = async () => {
 	const current = await getDeviceRegistrationPayload();
 	const response = await CryptoService.revokeDevice(current.device_uid);
+	await clearE2EESessions();
 	await clearLocalDeviceIdentity();
 	return response.data;
 };
