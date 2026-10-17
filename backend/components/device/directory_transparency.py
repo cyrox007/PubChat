@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.crypto_model import DeviceCryptographicIdentity
-from components.device.crypto_service import device_fingerprint
 from components.device.directory_transparency_model import DeviceDirectoryEvent
+from components.device.fingerprint import device_fingerprint
 from components.identity.model import Account
 
 
@@ -136,7 +136,7 @@ async def append_directory_event(
         sequence=sequence,
         event_type=event_type,
         device_uid=device.uid if device is not None else None,
-        key_version=str(device.key_version) if device is not None else None,
+        key_version=device.key_version if device is not None else None,
         fingerprint=device_payload["fingerprint"] if device_payload else None,
         identity_signing_key=device.identity_signing_key if device is not None else None,
         identity_dh_key=device.identity_dh_key if device is not None else None,
@@ -173,7 +173,7 @@ async def directory_history(
             "sequence": int(event.sequence),
             "event_type": event.event_type,
             "device_uid": str(event.device_uid) if event.device_uid else None,
-            "key_version": int(event.key_version) if event.key_version is not None else None,
+            "key_version": event.key_version,
             "fingerprint": event.fingerprint,
             "previous_hash": event.previous_hash,
             "directory_hash": event.directory_hash,
