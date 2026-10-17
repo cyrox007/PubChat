@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.device.crypto_model import DeviceCryptographicIdentity
+from components.device.crypto_model import DeviceCryptographicIdentity, DeviceOneTimePreKey
 from components.message.e2ee_model import PrivateMessageEnvelope
 
 
@@ -35,7 +35,8 @@ def _decode_b64url(value: str, *, max_bytes: int, field: str) -> bytes:
     return raw
 
 
-def _validate_initial_header(
+async def _validate_initial_header(
+    db: AsyncSession,
     header: dict | None,
     sender_device: DeviceCryptographicIdentity,
     target_device: DeviceCryptographicIdentity,
@@ -66,8 +67,10 @@ def _validate_initial_header(
         one_time_id = header.get("target_one_time_prekey_id")
         if signed_id < 0 or signed_id > MAX_SESSION_COUNTER:
             raise ValueError
-        if one_time_id is not None and (int(one_time_id) < 0 or int(one_time_id) > MAX_SESSION_COUNTER):
-            raise ValueError
+        if one_time_id is not None:
+            one_time_id = int(one_time_id)
+            if one_time_id < 0 or one_time_id > MAX_SESSION_COUNTER:
+                raise ValueError
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail={"error_type": "invalid_e2ee_prekey_id"}) from exc
     if signed_id != int(target_device.signed_prekey_id):
@@ -75,6 +78,24 @@ def _validate_initial_header(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error_type": "e2ee_target_prekey_rotated", "device_uid": str(target_device.uid)},
         )
+    if one_time_id is not None:
+        claimed = await db.execute(
+            select(DeviceOneTimePreKey.id)
+            .where(
+                DeviceOneTimePreKey.device_uid == target_device.uid,
+                DeviceOneTimePreKey.prekey_id == one_time_id,
+                DeviceOneTimePreKey.claimed_at.is_not(None),
+            )
+            .limit(1)
+        )
+        if claimed.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error_type": "e2ee_one_time_prekey_not_claimed",
+                    "device_uid": str(target_device.uid),
+                },
+            )
     return header
 
 
@@ -155,7 +176,12 @@ async def validate_encrypted_envelopes(
 
         if counter == 0 and envelope.get("initial_header") is None:
             raise HTTPException(status_code=400, detail={"error_type": "e2ee_initial_header_required"})
-        header = _validate_initial_header(envelope.get("initial_header"), sender_device, target_device)
+        header = await _validate_initial_header(
+            db,
+            envelope.get("initial_header"),
+            sender_device,
+            target_device,
+        )
         seen_targets.add(recipient_device_uid)
         validated.append(
             {
