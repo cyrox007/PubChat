@@ -1,0 +1,13 @@
+[Unit]
+Description=PubChat native push delivery worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/projects/pubchat/backend
+ExecStart=/home/projects/pubchat/backend/venv/bin/python3 -m workers.native_push_delivery
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+TimeoutStartSec=5min

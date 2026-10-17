@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     from views.moderation import operations_routers as moderation_operations_routes
     from views.moderation import restriction_routers as moderation_restriction_routes
     from views.moderation import routers as moderation_routes
+    from views.notifications import native_push_routers as native_push_routes
     from views.notifications import routers as notification_routes
     from views.realtime import routers as realtime_routes
     from views.rooms import routers as http_routes_chat
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     achievement_routes.install(app)
     realtime_routes.install(app)
     notification_routes.install(app)
+    native_push_routes.install(app)
     support_routes.install(app)
     discovery_routes.install(app)
     user_routes.install(app)

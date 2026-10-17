@@ -19,10 +19,11 @@ DEFAULT_MESSAGE_NOTIFICATION_PREFERENCES = {
     "space_in_app": True,
     "messenger_sound": True,
     "space_sound": True,
-    # Re-engagement channels are deliberately opt-in by default.
     "email_unread_dm_nudge": False,
     "web_push_messenger": False,
     "web_push_space": False,
+    "native_push_messenger": False,
+    "native_push_space": False,
 }
 
 
@@ -39,6 +40,8 @@ def message_notification_preference_projection(
         "email_unread_dm_nudge": bool(item.email_unread_dm_nudge),
         "web_push_messenger": bool(item.web_push_messenger),
         "web_push_space": bool(item.web_push_space),
+        "native_push_messenger": bool(item.native_push_messenger),
+        "native_push_space": bool(item.native_push_space),
     }
 
 
@@ -81,13 +84,7 @@ def message_delivery_policy(
     active_context: bool,
     preferences: Mapping[str, bool] | None = None,
 ) -> dict:
-    """Return alert/delivery hints without changing message authorization.
-
-    Message transport itself is intentionally outside this policy: an allowed
-    message is persisted/delivered according to the messaging domain regardless
-    of whether the recipient muted alerts. This function controls only alert UX
-    and eligibility for later external delivery adapters.
-    """
+    """Return alert/delivery hints without changing message authorization."""
 
     if surface not in SUPPORTED_MESSAGE_SURFACES:
         raise ValueError(f"Unsupported message notification surface: {surface}")
@@ -100,20 +97,24 @@ def message_delivery_policy(
         in_app_enabled = prefs["messenger_in_app"]
         sound_enabled = prefs["messenger_sound"]
         web_push_enabled = prefs["web_push_messenger"]
+        native_push_enabled = prefs["native_push_messenger"]
     else:
         in_app_enabled = prefs["space_in_app"]
         sound_enabled = prefs["space_sound"]
         web_push_enabled = prefs["web_push_space"]
+        native_push_enabled = prefs["native_push_space"]
 
     notify_in_app = bool(online and in_app_enabled and not active_context)
     play_sound = bool(notify_in_app and sound_enabled)
 
-    # Offline re-engagement is Messenger-only. Space chat never becomes a
-    # background email/push pressure source merely because the Account is away.
     external_eligible = bool(
         surface == SURFACE_MESSENGER
         and not online
-        and (prefs["email_unread_dm_nudge"] or web_push_enabled)
+        and (
+            prefs["email_unread_dm_nudge"]
+            or web_push_enabled
+            or native_push_enabled
+        )
     )
 
     return {
@@ -131,6 +132,11 @@ def message_delivery_policy(
             surface == SURFACE_MESSENGER
             and not online
             and web_push_enabled
+        ),
+        "native_push_eligible": bool(
+            surface == SURFACE_MESSENGER
+            and not online
+            and native_push_enabled
         ),
         "external_eligible": external_eligible,
     }

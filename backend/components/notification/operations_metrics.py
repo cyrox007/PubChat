@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+import os
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.notification.model import ExternalDeliveryLedger, WebPushSubscription
+from components.notification.model import ExternalDeliveryLedger, NativePushDevice, WebPushSubscription
 from settings import config
 
 
-DELIVERY_CHANNELS = ("email", "web_push")
+DELIVERY_CHANNELS = ("email", "web_push", "native_push")
 
 
 def _age_seconds(now: datetime, value: datetime | None) -> int:
@@ -24,11 +25,7 @@ async def external_delivery_metrics(
     *,
     window_hours: int = 24,
 ) -> dict:
-    """Aggregate privacy-safe email/Web Push delivery health.
-
-    No Account ids, destination addresses, push endpoints, message bodies,
-    aggregate/dedupe keys or claim tokens are returned.
-    """
+    """Aggregate privacy-safe email/Web/native push delivery health."""
     window_hours = max(1, min(720, int(window_hours)))
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=window_hours)
@@ -41,10 +38,7 @@ async def external_delivery_metrics(
                 func.count(ExternalDeliveryLedger.uid),
             )
             .where(ExternalDeliveryLedger.updated_at >= cutoff)
-            .group_by(
-                ExternalDeliveryLedger.channel,
-                ExternalDeliveryLedger.status,
-            )
+            .group_by(ExternalDeliveryLedger.channel, ExternalDeliveryLedger.status)
         )
     ).all()
     status_counts: dict[str, dict[str, int]] = defaultdict(dict)
@@ -62,10 +56,7 @@ async def external_delivery_metrics(
                 ExternalDeliveryLedger.updated_at >= cutoff,
                 ExternalDeliveryLedger.failure_class.is_not(None),
             )
-            .group_by(
-                ExternalDeliveryLedger.channel,
-                ExternalDeliveryLedger.failure_class,
-            )
+            .group_by(ExternalDeliveryLedger.channel, ExternalDeliveryLedger.failure_class)
         )
     ).all()
     failure_counts: dict[str, dict[str, int]] = defaultdict(dict)
@@ -77,6 +68,10 @@ async def external_delivery_metrics(
     backlog_limits = {
         "email": config.EXTERNAL_DELIVERY_EMAIL_BACKLOG_ALERT_SECONDS,
         "web_push": config.EXTERNAL_DELIVERY_WEB_PUSH_BACKLOG_ALERT_SECONDS,
+        "native_push": max(
+            60,
+            min(3600, int(os.getenv("EXTERNAL_DELIVERY_NATIVE_PUSH_BACKLOG_ALERT_SECONDS", "300"))),
+        ),
     }
 
     for channel in DELIVERY_CHANNELS:
@@ -174,18 +169,11 @@ async def external_delivery_metrics(
         )
 
         backlog_limit = backlog_limits[channel]
-        backlog_stale = bool(
-            due_count
-            and oldest_due_age_seconds > backlog_limit
-        )
+        backlog_stale = bool(due_count and oldest_due_age_seconds > backlog_limit)
         if backlog_stale:
-            attention_reasons.append(
-                f"{channel}.due_backlog_age_exceeded"
-            )
+            attention_reasons.append(f"{channel}.due_backlog_age_exceeded")
         if expired_claim_count:
-            attention_reasons.append(
-                f"{channel}.expired_processing_claims"
-            )
+            attention_reasons.append(f"{channel}.expired_processing_claims")
 
         channels[channel] = {
             "status_counts": dict(status_counts.get(channel, {})),
@@ -203,9 +191,12 @@ async def external_delivery_metrics(
         }
 
     subscription_count = int(
+        (await db.execute(select(func.count(WebPushSubscription.uid)))).scalar_one() or 0
+    )
+    active_native_device_count = int(
         (
             await db.execute(
-                select(func.count(WebPushSubscription.uid))
+                select(func.count(NativePushDevice.uid)).where(NativePushDevice.revoked_at.is_(None))
             )
         ).scalar_one()
         or 0
@@ -217,10 +208,12 @@ async def external_delivery_metrics(
         "attention_reasons": attention_reasons,
         "channels": channels,
         "web_push_subscription_count": subscription_count,
+        "native_push_active_device_count": active_native_device_count,
         "privacy": {
             "contains_account_ids": False,
             "contains_destination_addresses": False,
             "contains_push_endpoints": False,
+            "contains_native_push_tokens": False,
             "contains_message_content": False,
         },
     }

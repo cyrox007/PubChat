@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule PubChat native push delivery worker
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+RandomizedDelaySec=5s
+Persistent=true
+Unit=pubchat-native-push.service
+
+[Install]
+WantedBy=timers.target
