@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.space-shell { position: relative; height: calc(100dvh - 4.35rem); min-height: 32rem; display: flex; overflow: hidden; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-xl); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); }
+.space-shell { position: relative; height: calc(100dvh - 4.35rem - 2.85rem); min-height: 32rem; display: flex; overflow: hidden; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-xl); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); }
 .space-main { min-width: 0; flex: 1; display: flex; flex-direction: column; background: var(--ui-bg); }
 .space-header { min-height: 4.25rem; display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-2) var(--ui-space-4); border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-surface) 96%, transparent); }
 .space-header__icon { width: 2.65rem; height: 2.65rem; display: grid; place-items: center; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text-muted); cursor: pointer; }
@@ -448,12 +448,12 @@ onBeforeUnmount(() => {
 .access-gate__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ui-space-2); margin-top: var(--ui-space-2); }
 .ui-button--ghost { border: 1px solid var(--ui-border); background: transparent; color: var(--ui-text-muted); }
 @media (max-width: 991px) {
-	.space-shell { height: calc(100dvh - 4.35rem); min-height: 0; border-radius: var(--ui-radius-lg); }
+	.space-shell { height: calc(100dvh - 4.35rem - 2.85rem); min-height: 0; border-radius: var(--ui-radius-lg); }
 	.space-header { padding-inline: var(--ui-space-3); }
 }
 @media (max-width: 720px) {
 	.space-shell {
-		height: calc(100dvh - var(--ui-mobile-topbar-height) - var(--ui-mobile-nav-height) - env(safe-area-inset-bottom));
+		height: calc(100dvh - var(--ui-mobile-topbar-height) - var(--ui-mobile-nav-height) - 2.6rem - env(safe-area-inset-bottom));
 		min-height: 0;
 	}
 	.space-header {
