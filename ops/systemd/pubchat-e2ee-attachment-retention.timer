@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule PubChat E2EE attachment ciphertext retention worker
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+Persistent=true
+Unit=pubchat-e2ee-attachment-retention.service
+
+[Install]
+WantedBy=timers.target
