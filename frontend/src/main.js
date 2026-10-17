@@ -14,6 +14,7 @@ import "@/assets/ui-utilities.css";
 import "@/assets/messaging-ux.css";
 import "@/assets/mobile-density.css";
 import "@/assets/messenger-security.css";
+import "@/assets/composer-single-line.css";
 
 const avatarContainerSelector = [
 	'[class*="avatar"]',
