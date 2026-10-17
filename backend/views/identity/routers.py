@@ -30,7 +30,7 @@ from components.identity.service import (
 )
 from components.moderation.account_access import account_access_projection
 from components.moderation.policy import assert_allowed
-from components.realtime import realtime_service
+from components.realtime import RealtimeUnavailable, realtime_service
 from components.reputation.public import public_reputation_projection, self_reputation_projection
 from components.social.privacy import can_view_profile
 from database import Database
@@ -77,17 +77,23 @@ async def _disconnect_sessions(
     device_uid: str | None = None,
     except_session_uid: str | None = None,
 ) -> None:
-    await realtime_service.publish(
-        {
-            "kind": "session_control",
-            "action": "disconnect",
-            "account_uid": str(account_uid),
-            "session_uid": str(session_uid) if session_uid else None,
-            "device_uid": str(device_uid) if device_uid else None,
-            "except_session_uid": str(except_session_uid) if except_session_uid else None,
-            "reason": "Session revoked",
-        }
-    )
+    try:
+        await realtime_service.publish(
+            {
+                "kind": "session_control",
+                "action": "disconnect",
+                "account_uid": str(account_uid),
+                "session_uid": str(session_uid) if session_uid else None,
+                "device_uid": str(device_uid) if device_uid else None,
+                "except_session_uid": str(except_session_uid) if except_session_uid else None,
+                "reason": "Session revoked",
+            }
+        )
+    except RealtimeUnavailable:
+        # The DB revocation is authoritative. If Redis is degraded, existing
+        # sockets cannot be pushed closed immediately, but their next HTTP/ticket
+        # authorization still fails closed against IdentitySession.
+        return
 
 
 def install(app: FastAPI):
