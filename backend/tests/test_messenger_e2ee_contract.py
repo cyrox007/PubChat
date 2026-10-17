@@ -26,6 +26,14 @@ class MessengerE2EEContractTests(unittest.TestCase):
         self.assertIn("uq_private_message_envelope_message_device", constraints)
         self.assertIn("uq_private_message_envelope_session_counter", constraints)
 
+    def test_device_foreign_keys_cascade_envelopes(self):
+        foreign_keys = {
+            fk.parent.name: fk.ondelete
+            for fk in PrivateMessageEnvelope.__table__.foreign_keys
+        }
+        self.assertEqual(foreign_keys["recipient_device_uid"], "CASCADE")
+        self.assertEqual(foreign_keys["sender_device_uid"], "CASCADE")
+
     def test_protocol_bounds_are_explicit(self):
         self.assertEqual(E2EE_VERSION, "pubchat-e2ee-v1")
         self.assertGreaterEqual(MAX_ENVELOPE_CIPHERTEXT_BYTES, 4096)
