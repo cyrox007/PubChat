@@ -40,10 +40,13 @@
 					:key="item.value || 'all'"
 					type="button"
 					class="filter-chip"
-					:class="{ active: purpose === item.value }"
+					:class="{ active: !liveMode && purpose === item.value }"
 					@click="setPurpose(item.value)"
 				>
 					{{ item.label }}
+				</button>
+				<button v-if="hasActiveFilters" type="button" class="filter-chip filter-chip--reset" @click="resetFilters">
+					<i class="fas fa-rotate-left" aria-hidden="true"></i> Сбросить
 				</button>
 			</div>
 		</section>
@@ -136,8 +139,9 @@
 			<strong>{{ liveMode ? 'Сейчас тихо' : 'Подходящих пространств пока нет' }}</strong>
 			<span v-if="liveMode && livePresenceAvailable">Новые разговоры и присутствующие участники появятся здесь автоматически.</span>
 			<span v-else-if="liveMode">Присутствие людей временно недоступно; активные разговоры всё равно появятся здесь.</span>
-			<span v-else>Измените фильтр или создайте своё место с понятной темой и атмосферой.</span>
-			<button v-if="liveMode" class="ui-button" type="button" @click="toggleLiveMode">Показать все пространства</button>
+			<span v-else-if="hasActiveFilters">По текущим фильтрам ничего нет. Сбросьте их, чтобы снова увидеть все доступные пространства.</span>
+			<span v-else>Здесь пока нет доступных пространств. Можно создать своё место с понятной темой и атмосферой.</span>
+			<button v-if="hasActiveFilters" class="ui-button" type="button" @click="resetFilters">Сбросить фильтры</button>
 			<button v-else class="ui-button" type="button" @click="createOpen = true">Создать первым</button>
 		</section>
 		</Transition>
@@ -145,7 +149,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import DiscoveryService from '@/API/DiscoveryService';
@@ -153,9 +157,9 @@ import EngagementService from '@/API/EngagementService';
 import SpacesService from '@/API/SpacesService';
 import CreateSpaceModal from '@/components/Spaces/CreateSpaceModal.vue';
 import { useSpaceDiscoveryLivePolling } from '@/composables/useSpaceDiscoveryLivePolling';
+import { publicAssetUrl } from '@/utils/publicAssetUrl';
 
 const router = useRouter();
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
 const spaces = ref([]);
 const loading = ref(true);
@@ -167,6 +171,7 @@ const liveMode = ref(false);
 const livePresenceAvailable = ref(true);
 const createOpen = ref(false);
 const joiningUid = ref(null);
+const hasActiveFilters = computed(() => Boolean(liveMode.value || purpose.value || tagFilter.value || searchQuery.value));
 
 const purposeOptions = [
 	{ value: null, label: 'Все' },
@@ -195,42 +200,29 @@ const discoveryParams = () => ({
 
 const hydrateAppearances = async (items, previousItems = []) => {
 	if (!items.length) return items;
-	const appearances = new Map(
-		previousItems
-			.filter((item) => item.appearance)
-			.map((item) => [String(item.uid), item.appearance]),
-	);
+	const appearances = new Map(previousItems.filter((item) => item.appearance).map((item) => [String(item.uid), item.appearance]));
 	const missing = items.filter((item) => !appearances.has(String(item.uid)));
-
 	if (missing.length) {
 		try {
 			const response = await EngagementService.spaceAppearances(missing.map((item) => item.uid));
-			for (const appearance of response.data.appearances || []) {
-				appearances.set(String(appearance.space_uid), appearance);
-			}
+			for (const appearance of response.data.appearances || []) appearances.set(String(appearance.space_uid), appearance);
 		} catch (error) {
 			console.error('Не удалось загрузить оформление пространств:', error);
 		}
 	}
-
-	return items.map((space) => ({
-		...space,
-		appearance: appearances.get(String(space.uid)) || defaultAppearance(space.uid),
-	}));
+	return items.map((space) => ({ ...space, appearance: appearances.get(String(space.uid)) || defaultAppearance(space.uid) }));
 };
 
 const applyDiscoveryResponse = async (response) => {
 	livePresenceAvailable.value = response.data.live_presence_available !== false;
-	const listed = response.data.spaces || [];
-	spaces.value = await hydrateAppearances(listed, spaces.value);
+	spaces.value = await hydrateAppearances(response.data.spaces || [], spaces.value);
 };
 
 const loadSpaces = async () => {
 	loading.value = true;
 	errorMessage.value = '';
 	try {
-		const response = await DiscoveryService.spaces(discoveryParams());
-		await applyDiscoveryResponse(response);
+		await applyDiscoveryResponse(await DiscoveryService.spaces(discoveryParams()));
 	} catch (error) {
 		console.error('Не удалось загрузить Living Spaces:', error);
 		errorMessage.value = 'Проверьте соединение и попробуйте ещё раз.';
@@ -242,8 +234,7 @@ const loadSpaces = async () => {
 async function refreshLiveListing() {
 	if (!liveMode.value) return;
 	try {
-		const response = await DiscoveryService.spaces(discoveryParams());
-		await applyDiscoveryResponse(response);
+		await applyDiscoveryResponse(await DiscoveryService.spaces(discoveryParams()));
 	} catch (error) {
 		console.warn('Не удалось обновить режим «Живые сейчас»:', error);
 	}
@@ -252,11 +243,17 @@ async function refreshLiveListing() {
 useSpaceDiscoveryLivePolling(spaces, { liveMode, refreshLiveListing });
 
 const toggleLiveMode = async () => {
-	liveMode.value = !liveMode.value;
+	const next = !liveMode.value;
+	liveMode.value = next;
+	if (next) {
+		purpose.value = null;
+		tagFilter.value = null;
+	}
 	await loadSpaces();
 };
 
 const setPurpose = async (value) => {
+	liveMode.value = false;
 	purpose.value = value;
 	tagFilter.value = null;
 	await loadSpaces();
@@ -269,13 +266,22 @@ const clearSearch = async () => {
 };
 
 const filterByTag = async (tag) => {
+	liveMode.value = false;
+	purpose.value = null;
 	tagFilter.value = tag;
 	searchQuery.value = '';
 	await loadSpaces();
 };
 
-const isActiveMember = (space) => space.viewer_membership?.status === 'active' || space.viewer_membership?.role === 'owner';
+const resetFilters = async () => {
+	liveMode.value = false;
+	purpose.value = null;
+	tagFilter.value = null;
+	searchQuery.value = '';
+	await loadSpaces();
+};
 
+const isActiveMember = (space) => space.viewer_membership?.status === 'active' || space.viewer_membership?.role === 'owner';
 const actionLabel = (space) => {
 	if (joiningUid.value === space.uid) return 'Подключаем…';
 	if (isActiveMember(space)) return 'Открыть';
@@ -291,73 +297,34 @@ const enterSpace = async (space) => {
 		return;
 	}
 	if (space.join_policy === 'invite') return;
-
 	joiningUid.value = space.uid;
 	try {
 		const response = await SpacesService.join(space.uid);
 		const updated = response.data.space;
 		const index = spaces.value.findIndex((item) => item.uid === updated.uid);
 		if (index >= 0) spaces.value[index] = { ...spaces.value[index], ...updated };
-		if (updated.viewer_membership?.status === 'active') {
-			await router.push({ name: 'space', params: { uid: updated.uid } });
-		}
+		if (updated.viewer_membership?.status === 'active') await router.push({ name: 'space', params: { uid: updated.uid } });
 	} catch (error) {
 		console.error('Не удалось присоединиться к пространству:', error);
-		errorMessage.value = error.response?.data?.detail?.error_type === 'space_full'
-			? 'В этом пространстве сейчас нет свободных мест.'
-			: 'Не удалось присоединиться к пространству.';
+		errorMessage.value = error.response?.data?.detail?.error_type === 'space_full' ? 'В этом пространстве сейчас нет свободных мест.' : 'Не удалось присоединиться к пространству.';
 	} finally {
 		joiningUid.value = null;
 	}
 };
 
-const handleCreated = async (space) => {
-	createOpen.value = false;
-	await router.push({ name: 'space', params: { uid: space.uid } });
-};
-
-const purposeLabel = (value) => ({
-	community: 'Сообщество',
-	conversation: 'Разговоры',
-	meet_people: 'Знакомства',
-	games: 'Игры',
-	local: 'Локальное',
-}[value] || 'Сообщество');
-
-const purposeIcon = (value) => ({
-	community: 'fas fa-people-group',
-	conversation: 'fas fa-comments',
-	meet_people: 'fas fa-handshake',
-	games: 'fas fa-gamepad',
-	local: 'fas fa-location-dot',
-}[value] || 'fas fa-people-group');
-
-const joinPolicyLabel = (value) => ({
-	open: 'Открытый вход',
-	request: 'Вход по заявке',
-	invite: 'Только по приглашению',
-}[value] || 'Открытый вход');
-
+const handleCreated = async (space) => { createOpen.value = false; await router.push({ name: 'space', params: { uid: space.uid } }); };
+const purposeLabel = (value) => ({ community: 'Сообщество', conversation: 'Разговоры', meet_people: 'Знакомства', games: 'Игры', local: 'Локальное' }[value] || 'Сообщество');
+const purposeIcon = (value) => ({ community: 'fas fa-people-group', conversation: 'fas fa-comments', meet_people: 'fas fa-handshake', games: 'fas fa-gamepad', local: 'fas fa-location-dot' }[value] || 'fas fa-people-group');
+const joinPolicyLabel = (value) => ({ open: 'Открытый вход', request: 'Вход по заявке', invite: 'Только по приглашению' }[value] || 'Открытый вход');
 const spaceAppearanceClasses = (space) => {
-	const theme = ['lounge', 'warm', 'garden', 'studio', 'night'].includes(space.appearance?.theme_preset)
-		? space.appearance.theme_preset
-		: 'lounge';
-	const cover = ['soft-gradient', 'paper', 'mist', 'linen', 'night'].includes(space.appearance?.cover_preset)
-		? space.appearance.cover_preset
-		: 'soft-gradient';
+	const theme = ['lounge', 'warm', 'garden', 'studio', 'night'].includes(space.appearance?.theme_preset) ? space.appearance.theme_preset : 'lounge';
+	const cover = ['soft-gradient', 'paper', 'mist', 'linen', 'night'].includes(space.appearance?.cover_preset) ? space.appearance.cover_preset : 'soft-gradient';
 	return [`space-card--theme-${theme}`, `space-card--cover-${cover}`];
 };
-
 const locationLabel = (space) => [space.region, space.country].filter(Boolean).join(', ');
-const resolveAvatar = (avatar) => /^https?:\/\//.test(avatar) ? avatar : `${apiBaseUrl}${avatar}`;
+const resolveAvatar = publicAssetUrl;
 const avatarFallback = (value = '?') => String(value || '?').slice(0, 1).toUpperCase();
-const formatUpcoming = (value) => new Intl.DateTimeFormat('ru', {
-	weekday: 'short',
-	day: 'numeric',
-	month: 'short',
-	hour: '2-digit',
-	minute: '2-digit',
-}).format(new Date(value));
+const formatUpcoming = (value) => new Intl.DateTimeFormat('ru', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 
 onMounted(loadSpaces);
 </script>
@@ -378,6 +345,7 @@ onMounted(loadSpaces);
 .filter-chip { flex: 0 0 auto; min-height: 2.3rem; display: inline-flex; align-items: center; gap: .45rem; padding: 0 var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-sm); font-weight: 700; cursor: pointer; }
 .filter-chip.active { border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border)); background: var(--ui-primary-soft); color: var(--ui-primary); }
 .filter-chip--live.active { border-color: color-mix(in srgb, var(--ui-success) 42%, var(--ui-border)); background: var(--ui-success-soft); color: var(--ui-success); }
+.filter-chip--reset { margin-left: auto; color: var(--ui-text-subtle); }
 .filter-live-dot { width: .52rem; height: .52rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 .2rem color-mix(in srgb, currentColor 13%, transparent); }
 .filter-separator { width: 1px; height: 1.5rem; flex: 0 0 auto; background: var(--ui-border); }
 .space-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
@@ -395,56 +363,14 @@ onMounted(loadSpaces);
 .space-card--theme-night { border-color: color-mix(in srgb, var(--ui-text-muted) 36%, var(--ui-border)); }
 .space-card__topline { display: flex; justify-content: space-between; gap: var(--ui-space-2); }
 .purpose-badge, .visibility-badge { display: inline-flex; align-items: center; gap: var(--ui-space-1); font-size: var(--ui-text-xs); font-weight: 800; }
-.purpose-badge { color: var(--ui-primary); }
-.visibility-badge { color: var(--ui-text-subtle); }
-.space-card__body { min-height: 7rem; }
-.space-card__title { display: flex; align-items: center; gap: var(--ui-space-2); }
+.purpose-badge { color: var(--ui-primary); }.visibility-badge { color: var(--ui-text-subtle); }.space-card__body { min-height: 7rem; }.space-card__title { display: flex; align-items: center; gap: var(--ui-space-2); }
 .ambient-icon { width: 2rem; height: 2rem; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: color-mix(in srgb, var(--ui-surface) 82%, transparent); font-size: 1rem; }
-.space-card h2 { margin: 0; font-size: var(--ui-text-xl); letter-spacing: -.02em; }
-.space-card__body > p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; margin: var(--ui-space-2) 0 0; color: var(--ui-text-muted); line-height: 1.55; }
-.space-card__body .welcome-line { color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 700; -webkit-line-clamp: 2; }
-.tag-row { display: flex; flex-wrap: wrap; gap: var(--ui-space-1); margin-top: var(--ui-space-3); }
-.tag-row .ui-chip { border: 0; cursor: pointer; }
-.reason-block { display: grid; gap: .4rem; margin-top: var(--ui-space-3); }
-.reason-label { color: var(--ui-text-subtle); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-.reason-row { display: flex; flex-wrap: wrap; gap: .35rem; }
-.reason-chip { padding: .35rem .55rem; border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, var(--ui-border)); border-radius: var(--ui-radius-pill); background: color-mix(in srgb, var(--ui-primary-soft) 45%, transparent); color: var(--ui-text-muted); font-size: .7rem; font-weight: 650; }
-.upcoming-note { display: grid; grid-template-columns: auto minmax(0,1fr); gap: var(--ui-space-2); align-items: start; margin-top: var(--ui-space-3); padding: var(--ui-space-3); border-radius: var(--ui-radius-lg); background: color-mix(in srgb, var(--ui-info-soft) 55%, var(--ui-surface)); }
-.upcoming-note > i { margin-top: .2rem; color: var(--ui-info); }
-.upcoming-note > div { min-width: 0; display: grid; gap: .1rem; }
-.upcoming-note small, .upcoming-note time { color: var(--ui-text-subtle); font-size: .7rem; }
-.upcoming-note strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-text-sm); }
-.space-card__meta { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
-.space-card__meta span { display: inline-flex; align-items: center; gap: var(--ui-space-1); }
-.space-card__footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); padding-top: var(--ui-space-3); border-top: 1px solid var(--ui-border); }
-.owner-mini { min-width: 0; display: flex; align-items: center; gap: var(--ui-space-2); }
-.owner-mini__avatar { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; border-radius: 50%; background: var(--ui-primary-soft); color: var(--ui-primary); font-weight: 800; }
-.owner-mini__avatar img { width: 100%; height: 100%; object-fit: cover; }
-.owner-mini > span:last-child { min-width: 0; display: grid; }
-.owner-mini small { color: var(--ui-text-subtle); font-size: .66rem; }
-.owner-mini strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-text-sm); }
-.space-card__action { flex: 0 0 auto; }
-.ui-button--ghost { border: 1px solid var(--ui-border); background: transparent; color: var(--ui-text-muted); }
-.discovery-state { min-height: 22rem; display: grid; place-items: center; align-content: center; gap: var(--ui-space-2); padding: var(--ui-space-7); text-align: center; color: var(--ui-text-muted); }
-.discovery-state strong { color: var(--ui-text); font-size: var(--ui-text-lg); }
-.discovery-state span { max-width: 31rem; }
-.state-orbit { width: 4rem; height: 4rem; display: grid; place-items: center; margin-bottom: var(--ui-space-2); border-radius: 1.4rem; background: var(--ui-primary-soft); color: var(--ui-primary); font-size: var(--ui-text-xl); transform: rotate(4deg); }
-.discovery-state--error .state-orbit { background: var(--ui-danger-soft); color: var(--ui-danger); }
-@media (max-width: 860px) {
-	.space-grid { grid-template-columns: 1fr; }
-	.discovery-hero { align-items: flex-start; flex-direction: column; }
-}
-@media (max-width: 560px) {
-	.discovery-shell { margin-inline: calc(var(--ui-space-3) * -1); }
-	.discovery-hero { border-inline: 0; border-radius: 0; }
-	.discovery-toolbar { padding-inline: var(--ui-space-3); }
-	.space-grid { gap: var(--ui-space-2); }
-	.space-card { border-inline: 0; border-radius: 0; padding: var(--ui-space-4); }
-	.space-card__footer { align-items: stretch; flex-direction: column; }
-	.space-card__action { width: 100%; }
-}
-@media (prefers-reduced-motion: reduce) {
-	.space-card { transition: none; }
-	.space-card:hover { transform: none; }
-}
+.space-card h2 { margin: 0; font-size: var(--ui-text-xl); letter-spacing: -.02em; }.space-card__body > p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; margin: var(--ui-space-2) 0 0; color: var(--ui-text-muted); line-height: 1.55; }.space-card__body .welcome-line { color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 700; -webkit-line-clamp: 2; }
+.tag-row { display: flex; flex-wrap: wrap; gap: var(--ui-space-1); margin-top: var(--ui-space-3); }.tag-row .ui-chip { border: 0; cursor: pointer; }.reason-block { display: grid; gap: .4rem; margin-top: var(--ui-space-3); }.reason-label { color: var(--ui-text-subtle); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }.reason-row { display: flex; flex-wrap: wrap; gap: .35rem; }.reason-chip { padding: .35rem .55rem; border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, var(--ui-border)); border-radius: var(--ui-radius-pill); background: color-mix(in srgb, var(--ui-primary-soft) 45%, transparent); color: var(--ui-text-muted); font-size: .7rem; font-weight: 650; }
+.upcoming-note { display: grid; grid-template-columns: auto minmax(0,1fr); gap: var(--ui-space-2); align-items: start; margin-top: var(--ui-space-3); padding: var(--ui-space-3); border-radius: var(--ui-radius-lg); background: color-mix(in srgb, var(--ui-info-soft) 55%, var(--ui-surface)); }.upcoming-note > i { margin-top: .2rem; color: var(--ui-info); }.upcoming-note > div { min-width: 0; display: grid; gap: .1rem; }.upcoming-note small, .upcoming-note time { color: var(--ui-text-subtle); font-size: .7rem; }.upcoming-note strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-text-sm); }
+.space-card__meta { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }.space-card__meta span { display: inline-flex; align-items: center; gap: var(--ui-space-1); }.space-card__footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); padding-top: var(--ui-space-3); border-top: 1px solid var(--ui-border); }.owner-mini { min-width: 0; display: flex; align-items: center; gap: var(--ui-space-2); }.owner-mini__avatar { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; border-radius: 50%; background: var(--ui-primary-soft); color: var(--ui-primary); font-weight: 800; }.owner-mini__avatar img { width: 100%; height: 100%; object-fit: cover; }.owner-mini > span:last-child { min-width: 0; display: grid; }.owner-mini small { color: var(--ui-text-subtle); font-size: .66rem; }.owner-mini strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-text-sm); }.space-card__action { flex: 0 0 auto; }.ui-button--ghost { border: 1px solid var(--ui-border); background: transparent; color: var(--ui-text-muted); }
+.discovery-state { min-height: 22rem; display: grid; place-items: center; align-content: center; gap: var(--ui-space-2); padding: var(--ui-space-7); text-align: center; color: var(--ui-text-muted); }.discovery-state strong { color: var(--ui-text); font-size: var(--ui-text-lg); }.discovery-state span { max-width: 31rem; }.state-orbit { width: 4rem; height: 4rem; display: grid; place-items: center; margin-bottom: var(--ui-space-2); border-radius: 1.4rem; background: var(--ui-primary-soft); color: var(--ui-primary); font-size: var(--ui-text-xl); transform: rotate(4deg); }.discovery-state--error .state-orbit { background: var(--ui-danger-soft); color: var(--ui-danger); }
+@media (max-width: 860px) { .space-grid { grid-template-columns: 1fr; }.discovery-hero { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 560px) { .discovery-shell { margin-inline: calc(var(--ui-space-3) * -1); }.discovery-hero { border-inline: 0; border-radius: 0; }.discovery-toolbar { padding-inline: var(--ui-space-3); }.space-grid { gap: var(--ui-space-2); }.space-card { border-inline: 0; border-radius: 0; padding: var(--ui-space-4); }.space-card__footer { align-items: stretch; flex-direction: column; }.space-card__action { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .space-card { transition: none; }.space-card:hover { transform: none; } }
 </style>
