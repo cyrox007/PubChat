@@ -167,9 +167,6 @@ class RealtimeService:
             except Exception:
                 pass
         try:
-            # In Sentinel mode this creates a fresh PubSub connection through the
-            # SentinelConnectionPool, which resolves the current master after a
-            # promotion instead of pinning the old master address.
             self._pubsub = self._redis.pubsub(ignore_subscribe_messages=True)
             await self._pubsub.subscribe(self.CHANNEL)
             return True
@@ -199,8 +196,6 @@ class RealtimeService:
                     except Exception:
                         logger.exception("Ошибка обработки Redis realtime event")
 
-                # A PubSub iterator normally lives forever. Reaching EOF means
-                # the subscription was lost, so force a resubscribe path.
                 logger.warning("Redis realtime PubSub iterator завершился; восстанавливаем подписку")
                 if self._pubsub:
                     try:
@@ -272,10 +267,9 @@ class RealtimeService:
         account_uid: UUID | str,
         target: str,
         resource_uid: UUID | str | None = None,
+        session_uid: UUID | str | None = None,
+        device_uid: UUID | str | None = None,
     ) -> tuple[str, int]:
-        # If Redis was unavailable during application startup, allow a production
-        # worker to recover on the next normal ticket request instead of requiring
-        # a process restart. DEBUG deliberately keeps its cheap local fallback.
         if not self._redis and not config.DEBUG and config.redis_configured():
             await self.start()
         if not self._redis and not config.DEBUG:
@@ -287,6 +281,8 @@ class RealtimeService:
             "account_uid": str(account_uid),
             "target": target,
             "resource_uid": str(resource_uid) if resource_uid else None,
+            "session_uid": str(session_uid) if session_uid else None,
+            "device_uid": str(device_uid) if device_uid else None,
             "expires_at": time.time() + ttl,
         }
         key = self._ticket_key(raw_ticket)
