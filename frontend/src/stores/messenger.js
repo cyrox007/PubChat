@@ -1,4 +1,9 @@
 import RealtimeService from '@/API/RealtimeService';
+import {
+	decryptMessageForCurrentDevice,
+	hydrateConversationEnvelopes,
+	sendEncryptedText,
+} from '@/crypto/messengerE2EE';
 
 let messengerReconnectTimer = null;
 let messengerHeartbeatTimer = null;
@@ -262,21 +267,24 @@ export default {
 			commit('SET_RECONNECT_ATTEMPT', 0);
 		},
 
-		handleMessengerMessage({ commit, rootGetters, state, dispatch }, data) {
+		async handleMessengerMessage({ commit, rootGetters, state, dispatch }, data) {
 			const currentUser = rootGetters.getUser;
 			switch (data.type) {
 				case 'private_message': {
-					const isFromCurrentUser = data.sender_uid === currentUser?.uid;
-					const otherUserId = isFromCurrentUser ? data.receiver_uid : data.sender_uid;
+					const decoded = data.content_type === 'e2ee'
+						? await decryptMessageForCurrentDevice(data)
+						: data;
+					const isFromCurrentUser = decoded.sender_uid === currentUser?.uid;
+					const otherUserId = isFromCurrentUser ? decoded.receiver_uid : decoded.sender_uid;
 					commit('ADD_MESSAGE', {
 						userId: otherUserId,
 						message: {
-							...data,
+							...decoded,
 							isCurrentUser: isFromCurrentUser,
-							timestamp: new Date(data.created_at || Date.now()),
+							timestamp: new Date(decoded.created_at || Date.now()),
 						},
 					});
-					const shouldPlaySound = data.notification?.play_sound
+					const shouldPlaySound = decoded.notification?.play_sound
 						?? (!isFromCurrentUser && state.activeDialog !== otherUserId);
 					if (!isFromCurrentUser && shouldPlaySound) dispatch('playNotificationSound');
 					break;
@@ -300,7 +308,8 @@ export default {
 					commit('MARK_MESSAGE_AS_READ', data.message_uid);
 					break;
 				case 'conversation': {
-					const messages = [...(data.messages || [])].reverse().map((message) => ({
+					const hydrated = await hydrateConversationEnvelopes(data.messages || []);
+					const messages = [...hydrated].reverse().map((message) => ({
 						...message,
 						isCurrentUser: message.sender_uid === currentUser?.uid,
 						timestamp: new Date(message.created_at || Date.now()),
@@ -341,11 +350,35 @@ export default {
 			commit('SET_ACTIVE_DIALOG', userId);
 		},
 
-		sendPrivateMessage({ state }, messageData) {
+		async sendPrivateMessage({ state, commit }, messageData) {
+			const canEncrypt = (messageData.content_type || 'text') === 'text'
+				&& typeof messageData.content === 'string'
+				&& messageData.content.length > 0;
+			if (canEncrypt) {
+				try {
+					const result = await sendEncryptedText({
+						receiverUid: messageData.receiver_uid,
+						text: messageData.content,
+						frontId: messageData.frontId,
+						deviceLabel: navigator.userAgentData?.platform || navigator.platform || 'Browser',
+					});
+					if (result.encrypted) return result;
+					if (result.reason !== 'peer_no_crypto_devices') throw new Error(result.reason || 'e2ee_unavailable');
+				} catch (error) {
+					if (error?.message !== 'peer_no_crypto_devices') {
+						commit('SET_REALTIME_NOTICE', {
+							type: 'error',
+							message: 'Защищённая отправка не удалась. Сообщение не было отправлено без шифрования.',
+						});
+						throw error;
+					}
+				}
+			}
 			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
 				throw new Error('Личные сообщения сейчас переподключаются');
 			}
 			state.socket.send(JSON.stringify({ action: 'send_message', ...messageData }));
+			return { encrypted: false };
 		},
 
 		requestConversation({ state }, { otherUserId, requestId }) {
