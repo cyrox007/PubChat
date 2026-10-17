@@ -9,6 +9,7 @@ import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vu
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
+import SpaceContextNavigation from '@/components/Spaces/SpaceContextNavigation.vue';
 import SpacePulsePanel from '@/components/Spaces/SpacePulsePanel.vue';
 
 const store = useStore();
@@ -26,9 +27,14 @@ let routeVisibleAt = 0;
 
 const ROUTE_PROGRESS_DELAY = 90;
 const ROUTE_PROGRESS_MIN_VISIBLE = 180;
+const SPACE_CONTEXT_ROUTES = new Set(['space', 'space-community', 'space-life', 'space-support', 'space-moderation']);
 
 const BOOTSTRAP_RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000];
 const TRANSIENT_BOOTSTRAP_STATUSES = new Set([502, 503, 504]);
+const spaceContextUid = computed(() => {
+	if (!SPACE_CONTEXT_ROUTES.has(String(route.name || ''))) return '';
+	return String(route.params.uid || '');
+});
 const spacePulseUid = computed(() => route.name === 'space-life' ? String(route.params.uid || '') : '');
 
 const clearBootstrapRetry = () => {
@@ -234,6 +240,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 		<MessageNotifications />
 		<CallOverlay />
 		<HeaderComponent />
+		<SpaceContextNavigation v-if="spaceContextUid" :space-uid="spaceContextUid" />
 		<PwaInstallPrompt />
 		<PwaUpdateNotice />
 
