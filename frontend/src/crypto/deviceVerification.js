@@ -1,7 +1,6 @@
 import CryptoService from '@/API/CryptoService';
 import { ensureRegisteredDevice } from '@/crypto/deviceIdentitySync';
 import { getDeviceRegistrationPayload } from '@/crypto/deviceIdentity';
-import { observeDirectoryCheckpoint } from '@/crypto/directoryCheckpoint';
 
 const DB_NAME = 'pubchat-e2ee-sessions-v1';
 const DB_VERSION = 1;
@@ -93,14 +92,9 @@ const directoryMap = (entries) => new Map((entries || []).map((entry) => [entry.
 export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) => {
 	await ensureRegisteredDevice({ deviceLabel: navigator.userAgentData?.platform || navigator.platform || 'Browser' });
 	const own = await getDeviceRegistrationPayload();
+	// CryptoService.accountDevices is the common fail-closed transparency boundary.
 	const response = await CryptoService.accountDevices(peerAccountUid);
 	const peerDevices = response.data?.devices || [];
-	const checkpointState = await observeDirectoryCheckpoint({
-		accountUid: peerAccountUid,
-		checkpoint: response.data?.directory_checkpoint || null,
-		requireCheckpoint: peerDevices.length > 0,
-	});
-	const transparencyConflict = checkpointState.ok ? null : checkpointState.reason;
 	const currentDirectory = await canonicalDirectory(peerDevices);
 	const currentMap = directoryMap(currentDirectory);
 	const key = snapshotKey(peerAccountUid);
@@ -126,15 +120,14 @@ export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) =
 			isNew: !firstObservation && added.some((entry) => entry.deviceUid === String(peer.device_uid)),
 		});
 	}
-	const directoryChanged = transparencyConflict || added.length > 0 || removed.length > 0 || changed.length > 0;
+	const directoryChanged = added.length > 0 || removed.length > 0 || changed.length > 0;
 	const allVerified = devices.length > 0 && devices.every((device) => device.verified);
 	return {
 		peerAccountUid: String(peerAccountUid),
 		ownDeviceUid: String(own.device_uid),
 		status: directoryChanged ? 'changed' : (allVerified ? 'verified' : (devices.length ? 'unverified' : 'unavailable')),
-		directoryChanged: Boolean(directoryChanged),
-		transparencyConflict,
-		directoryCheckpoint: checkpointState.checkpoint || checkpointState.current || null,
+		directoryChanged,
+		directoryCheckpoint: response.data?.directory_checkpoint || null,
 		added,
 		removed,
 		changed,
@@ -144,7 +137,6 @@ export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) =
 
 export const verifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUid }) => {
 	const state = await getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
-	if (state.transparencyConflict) throw new Error('e2ee_directory_transparency_conflict');
 	const device = state.devices.find((item) => item.deviceUid === String(deviceUid));
 	if (!device) throw new Error('e2ee_peer_device_not_found');
 	await putRecord({ deviceUid: verificationKey(state.ownDeviceUid, device.deviceUid), recordType: 'verification', ownDeviceUid: state.ownDeviceUid, peerAccountUid: String(peerAccountUid), peerDeviceUid: device.deviceUid, peerFingerprint: device.fingerprint, safetyNumber: device.safetyNumber, verifiedAt: new Date().toISOString() });
@@ -158,14 +150,7 @@ export const unverifyPeerDevice = async ({ ownAccountUid, peerAccountUid, device
 };
 export const acknowledgePeerDirectory = async ({ ownAccountUid, peerAccountUid }) => {
 	const response = await CryptoService.accountDevices(peerAccountUid);
-	const devices = response.data?.devices || [];
-	const checkpointState = await observeDirectoryCheckpoint({
-		accountUid: peerAccountUid,
-		checkpoint: response.data?.directory_checkpoint || null,
-		requireCheckpoint: devices.length > 0,
-	});
-	if (!checkpointState.ok) throw new Error('e2ee_directory_transparency_conflict');
-	const currentDirectory = await canonicalDirectory(devices);
+	const currentDirectory = await canonicalDirectory(response.data?.devices || []);
 	const key = snapshotKey(peerAccountUid);
 	await putRecord({ deviceUid: key, recordType: 'account-snapshot', accountUid: String(peerAccountUid), acknowledgedDirectory: currentDirectory, acknowledgedAt: new Date().toISOString() });
 	return getPeerDeviceSecurity({ ownAccountUid, peerAccountUid });
