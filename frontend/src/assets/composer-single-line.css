@@ -1,6 +1,6 @@
 .conversation-area {
 	display: grid !important;
-	grid-template-columns: minmax(0, 34%) minmax(0, 66%);
+	grid-template-columns: minmax(11rem, 34%) minmax(0, 66%);
 	grid-template-rows: minmax(0, 1fr) auto;
 	min-width: 0;
 }
@@ -31,6 +31,7 @@
 
 .conversation-area > .live-presence .live-presence__copy,
 .conversation-area > .live-presence .live-presence__status,
+.conversation-area > .live-presence .live-presence__label,
 .conversation-area > .live-presence .live-presence__people {
 	min-width: 0;
 	flex-wrap: nowrap !important;
@@ -43,12 +44,34 @@
 }
 
 .conversation-area > .live-presence .live-presence__status {
-	flex: 0 1 auto;
+	flex: 1 1 auto;
 	overflow: hidden;
 }
 
-.conversation-area > .live-presence .live-presence__copy strong,
-.conversation-area > .live-presence .live-presence__detail,
+.conversation-area > .live-presence .live-presence__label {
+	flex: 1 1 auto;
+	max-width: 10rem;
+	overflow: hidden;
+	text-transform: none !important;
+}
+
+.conversation-area > .live-presence .live-presence__place {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.conversation-area > .live-presence .live-presence__copy strong {
+	flex: 0 0 auto;
+	min-width: 0;
+	white-space: nowrap;
+}
+
+.conversation-area > .live-presence .live-presence__detail {
+	display: none !important;
+}
+
 .conversation-area > .live-presence .live-presence__typing {
 	min-width: 0;
 	overflow: hidden;
@@ -186,9 +209,8 @@
 
 @media (max-width: 900px) {
 	.conversation-area {
-		grid-template-columns: minmax(7.5rem, 28%) minmax(0, 72%);
+		grid-template-columns: minmax(9.5rem, 32%) minmax(0, 68%);
 	}
-	.conversation-area > .live-presence .live-presence__detail,
 	.conversation-area > .live-presence .live-presence__typing {
 		display: none !important;
 	}
@@ -203,22 +225,19 @@
 
 @media (max-width: 680px) {
 	.conversation-area {
-		grid-template-columns: minmax(5.75rem, 24%) minmax(0, 76%);
+		grid-template-columns: minmax(7rem, 28%) minmax(0, 72%);
 	}
 	.conversation-area > .live-presence {
 		padding-inline: .3rem !important;
 	}
 	.conversation-area > .live-presence .live-presence__label {
-		font-size: 0 !important;
-	}
-	.conversation-area > .live-presence .live-presence__label .live-presence__dot {
-		font-size: initial;
+		max-width: 5.25rem;
+		font-size: .68rem !important;
 	}
 	.conversation-area > .live-presence .live-presence__copy strong {
-		font-size: .7rem !important;
+		font-size: .68rem !important;
 	}
-	.conversation-area > .live-presence .live-presence__people .live-presence__person:nth-child(n+2),
-	.conversation-area > .live-presence .live-presence__more {
+	.conversation-area > .live-presence .live-presence__people {
 		display: none !important;
 	}
 	.conversation-area > .composer {
