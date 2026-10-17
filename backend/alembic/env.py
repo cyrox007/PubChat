@@ -22,6 +22,7 @@ from components.transcription.model import MediaTranscriptionJob
 from components.reputation.model import AccountReputationAssessment
 from components.social.availability_model import PersonaSocialAvailability
 from components.device.model import UserDevice
+from components.device.crypto_model import DeviceCryptographicIdentity, DeviceOneTimePreKey
 from components.identity.model import (
     Account,
     AccountRelationship,
