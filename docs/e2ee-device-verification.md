@@ -30,7 +30,7 @@ The QR image is generated entirely in the browser. No safety number, Account/dev
 
 On browsers with `BarcodeDetector` QR support, PubChat can use the device camera to scan the peer's QR locally. A scan marks a device verified only if the decoded versioned payload exactly equals the safety number PubChat has just derived for the selected current device pair. A mismatched, malformed or unversioned QR never sets local verification state. Browsers without local QR detection expose a manual paste fallback for a QR value read by the system camera or another trusted device.
 
-QR comparison changes only the ergonomics of independent verification; it does not make the PubChat server a trusted attester and it is not a substitute for key transparency.
+QR comparison changes only the ergonomics of independent verification; it does not make the PubChat server a trusted attester.
 
 ## Device changes
 
@@ -46,11 +46,28 @@ The first observed directory is a trust-on-first-use baseline. After that baseli
 
 When a fresh prekey bundle is claimed for a device, its Ed25519/X25519 identity keys must still match the directory entry used by the send check. A mismatch aborts the send instead of silently encrypting to a different identity.
 
+## Device-directory transparency groundwork
+
+Every Account with cryptographic devices now has a versioned append-only device-directory journal. Registration and revocation append an Account-scoped event with a monotonically increasing sequence, the previous event hash and a canonical hash of the current active device directory. Existing installations receive a migration-time bootstrap checkpoint representing the active directory at upgrade time.
+
+`GET /crypto/v1/accounts/{account_uid}/devices` includes the latest `directory_checkpoint`. Authorized DM peers can retrieve subsequent journal events through `/directory-history`.
+
+The browser stores the strongest checkpoint it has already observed for a peer in local E2EE IndexedDB state. Before `CryptoService.accountDevices()` returns a peer directory to any caller, PubChat validates that checkpoint:
+
+- a lower sequence than the locally remembered value is rejected as rollback;
+- a different hash at the same sequence is rejected as a fork;
+- a higher sequence requires a contiguous `previous_hash -> event_hash` history from the locally stored checkpoint to the new checkpoint;
+- history verification is bounded; excessively large gaps fail closed instead of doing unbounded work.
+
+Because all Messenger E2EE peer-directory reads go through this common API client path, a consistency conflict blocks safety-number verification and encrypted-send preparation rather than becoming a cosmetic warning.
+
+This is deliberately described as **transparency groundwork**, not as a complete public key-transparency system. The PubChat server still serves both the directory and its journal and can theoretically equivocate consistently to isolated clients. Full malicious-server resistance requires an independent witness/gossip mechanism, externally comparable signed checkpoints, or another anti-equivocation design. Local rollback/fork detection materially strengthens TOFU continuity but does not remove the server from the trust model.
+
 ## Storage and trust boundary
 
-Manual verification state is stored locally in the same origin-scoped IndexedDB used by the browser E2EE session layer. It is not synchronized as a server trust assertion and must be repeated independently on another device.
+Manual verification state and remembered transparency checkpoints are stored locally in the same origin-scoped IndexedDB used by the browser E2EE session layer. They are not synchronized as server trust assertions and must be established independently on another device.
 
-The current server remains the device-key directory. Safety-number or QR comparison detects substitution when the two users compare independently, but PubChat does **not** yet provide a public key-transparency log or automatic malicious-directory-server resistance. Key transparency remains separate follow-up hardening.
+Safety-number or QR comparison remains the mechanism for users to independently detect substituted device identity keys. Directory checkpoints add continuity and auditability around subsequent server directory responses; they do not replace independent comparison.
 
 ## Relationship to conversation policy
 

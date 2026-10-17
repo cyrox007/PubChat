@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.crypto_model import DeviceCryptographicIdentity
-from components.device.crypto_service import device_fingerprint
+from components.device.fingerprint import device_fingerprint
 
 
 async def public_devices(db: AsyncSession, account_uid: UUID) -> list[dict]:

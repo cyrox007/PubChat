@@ -16,6 +16,7 @@ from components.message import e2ee_attachment_model as _message_e2ee_attachment
 from components.message import encryption_policy_model as _message_encryption_policy_model  # noqa: F401
 from components.device import model as _device_model  # noqa: F401
 from components.device import crypto_model as _device_crypto_model  # noqa: F401
+from components.device import directory_transparency_model as _device_directory_transparency_model  # noqa: F401
 
 from components.identity import model as _identity_model  # noqa: F401
 from components.space import model as _space_model  # noqa: F401

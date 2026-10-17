@@ -18,6 +18,7 @@ from components.device.crypto_service import (
     rotate_signed_prekey,
 )
 from components.device.directory import public_devices
+from components.device.directory_transparency import directory_history, latest_directory_checkpoint
 from components.message.e2ee_attachment import (
     delete_pending_encrypted_attachment,
     get_encrypted_attachment,
@@ -122,7 +123,41 @@ def install(app: FastAPI) -> None:
                 detail={"error_type": "crypto_devices_not_available"},
             )
         devices = await public_devices(db, target_account_uid)
-        return {"status": "ok", "account_uid": str(target_account_uid), "devices": devices}
+        checkpoint = await latest_directory_checkpoint(db, target_account_uid)
+        return {
+            "status": "ok",
+            "account_uid": str(target_account_uid),
+            "devices": devices,
+            "directory_checkpoint": checkpoint,
+        }
+
+    @router.get("/accounts/{target_account_uid}/directory-history")
+    async def account_crypto_directory_history(
+        target_account_uid: UUID,
+        after_sequence: int = 0,
+        limit: int = 100,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        requester_uid = _account_uid(current_user)
+        if not await _dm_allowed(db, requester_uid, target_account_uid):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error_type": "crypto_directory_history_not_available"},
+            )
+        history = await directory_history(
+            db,
+            account_uid=target_account_uid,
+            after_sequence=max(0, after_sequence),
+            limit=limit,
+        )
+        checkpoint = await latest_directory_checkpoint(db, target_account_uid)
+        return {
+            "status": "ok",
+            "account_uid": str(target_account_uid),
+            "events": history,
+            "directory_checkpoint": checkpoint,
+        }
 
     @router.get("/accounts/{target_account_uid}/prekey-bundle")
     async def account_prekey_bundle(

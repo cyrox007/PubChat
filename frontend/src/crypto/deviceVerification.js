@@ -92,6 +92,7 @@ const directoryMap = (entries) => new Map((entries || []).map((entry) => [entry.
 export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) => {
 	await ensureRegisteredDevice({ deviceLabel: navigator.userAgentData?.platform || navigator.platform || 'Browser' });
 	const own = await getDeviceRegistrationPayload();
+	// CryptoService.accountDevices is the common fail-closed transparency boundary.
 	const response = await CryptoService.accountDevices(peerAccountUid);
 	const peerDevices = response.data?.devices || [];
 	const currentDirectory = await canonicalDirectory(peerDevices);
@@ -121,7 +122,17 @@ export const getPeerDeviceSecurity = async ({ ownAccountUid, peerAccountUid }) =
 	}
 	const directoryChanged = added.length > 0 || removed.length > 0 || changed.length > 0;
 	const allVerified = devices.length > 0 && devices.every((device) => device.verified);
-	return { peerAccountUid: String(peerAccountUid), ownDeviceUid: String(own.device_uid), status: directoryChanged ? 'changed' : (allVerified ? 'verified' : (devices.length ? 'unverified' : 'unavailable')), directoryChanged, added, removed, changed, devices };
+	return {
+		peerAccountUid: String(peerAccountUid),
+		ownDeviceUid: String(own.device_uid),
+		status: directoryChanged ? 'changed' : (allVerified ? 'verified' : (devices.length ? 'unverified' : 'unavailable')),
+		directoryChanged,
+		directoryCheckpoint: response.data?.directory_checkpoint || null,
+		added,
+		removed,
+		changed,
+		devices,
+	};
 };
 
 export const verifyPeerDevice = async ({ ownAccountUid, peerAccountUid, deviceUid }) => {

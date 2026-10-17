@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 from datetime import datetime
 from uuid import UUID
 
@@ -15,24 +13,12 @@ from components.device.crypto_schemas import (
     OneTimePreKeyInput,
     SignedPreKeyInput,
 )
+from components.device.directory_transparency import append_directory_event
+from components.device.fingerprint import device_fingerprint
 from components.identity.model import Account
 
 
 MAX_AVAILABLE_ONE_TIME_PREKEYS = 200
-
-
-def _key_bytes(value: str) -> bytes:
-    padding = "=" * ((4 - len(value) % 4) % 4)
-    return base64.urlsafe_b64decode(value + padding)
-
-
-def device_fingerprint(identity_signing_key: str, identity_dh_key: str) -> str:
-    digest = hashlib.sha256(
-        b"pubchat-device-identity-v1\x00"
-        + _key_bytes(identity_signing_key)
-        + _key_bytes(identity_dh_key)
-    ).digest()
-    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 def _device_projection(device: DeviceCryptographicIdentity, *, prekey_count: int | None = None) -> dict:
@@ -149,6 +135,7 @@ async def register_device(
 
     existing = await db.get(DeviceCryptographicIdentity, payload.device_uid)
     now = datetime.utcnow()
+    created = False
     if existing:
         if existing.account_uid != account_uid:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"error_type": "crypto_device_identity_conflict"})
@@ -196,8 +183,11 @@ async def register_device(
         )
         db.add(device)
         await db.flush()
+        created = True
 
     count = await _add_one_time_prekeys(db, device=device, prekeys=payload.one_time_prekeys)
+    if created:
+        await append_directory_event(db, account_uid=account_uid, event_type="register", device=device)
     await db.commit()
     await db.refresh(device)
     return _device_projection(device, prekey_count=count)
@@ -274,6 +264,8 @@ async def revoke_device(
         device.revoked_at = datetime.utcnow()
         device.updated_at = datetime.utcnow()
         await db.execute(delete(DeviceOneTimePreKey).where(DeviceOneTimePreKey.device_uid == device.uid))
+        await db.flush()
+        await append_directory_event(db, account_uid=account_uid, event_type="revoke", device=device)
         await db.commit()
     return {"device_uid": str(device.uid), "revoked": True, "revoked_at": device.revoked_at.isoformat() if device.revoked_at else None}
 
