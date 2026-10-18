@@ -11,6 +11,7 @@ from components.realtime import realtime_service
 from socket_manager import call_manager
 from utils.logger import setup_logger
 from views.messenger.ws_handlers import _dm_allowed
+from views.calls.pending_offers import save_pending_offer, clear_pending_offer
 
 
 logger = setup_logger(__name__)
@@ -137,6 +138,18 @@ async def _handle_signal(websocket: WebSocket, user_uid: UUID, db: AsyncSession,
         return
 
     payload["from_uid"] = str(user_uid)
+    # Preserve the validated offer briefly for an Android app opened from
+    # a call wakeup. No SDP/ICE travels via FCM or appears in logs.
+    if payload["signal_type"] == "call_offer":
+        try:
+            await save_pending_offer(target_uid, payload)
+        except Exception:
+            logger.warning("Pending call offer storage unavailable")
+    elif payload["signal_type"] in {"call_end", "call_decline"}:
+        try:
+            await clear_pending_offer(target_uid, payload["call_uid"])
+        except Exception:
+            logger.warning("Pending call cleanup unavailable")
     await call_manager.send_to_user(target_uid, payload)
     await call_manager.send_to_specific_user(
         websocket,
