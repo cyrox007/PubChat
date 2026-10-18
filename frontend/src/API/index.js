@@ -121,11 +121,18 @@ $api.interceptors.request.use(async (requestConfig) => {
     const method = String(config.method || 'get').toLowerCase();
     config.headers = config.headers || {};
     config.headers[AUTH_DEVICE_HEADER] = getAuthDeviceId();
-    if (!config.signal && shouldCancelOnPageHide(config)) {
-        const controller = new AbortController();
-        config.signal = controller.signal;
-        config._documentReadController = controller;
-        pendingDocumentReads.add(controller);
+    if (shouldCancelOnPageHide(config)) {
+        // WebKit may report navigation-interrupted XMLHttpRequest as an
+        // access-control failure even though the destination is same-origin.
+        // Fetch has predictable cancellation semantics for read-only traffic.
+        // Keep Axios/XHR for mutations and uploads so their semantics do not change.
+        config.adapter = 'fetch';
+        if (!config.signal) {
+            const controller = new AbortController();
+            config.signal = controller.signal;
+            config._documentReadController = controller;
+            pendingDocumentReads.add(controller);
+        }
     }
 
     if (UNSAFE_METHODS.has(method)) {
