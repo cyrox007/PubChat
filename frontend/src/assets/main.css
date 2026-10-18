@@ -34,42 +34,42 @@
     /* Shape */
     --ui-radius-sm: 0.5rem;
     --ui-radius-md: 0.75rem;
-    --ui-radius-lg: 1rem;
-    --ui-radius-xl: 1.375rem;
+    --ui-radius-lg: 1.125rem;
+    --ui-radius-xl: 1.5rem;
     --ui-radius-pill: 999px;
 
     /* Calm, social-first light palette */
-    --ui-bg: #f6f4f1;
+    --ui-bg: #f6f7ff;
     --ui-surface: #ffffff;
     --ui-surface-raised: #ffffff;
-    --ui-surface-muted: #efebe7;
-    --ui-surface-soft: #faf8f6;
-    --ui-text: #272321;
-    --ui-text-muted: #6f6863;
-    --ui-text-subtle: #8b837d;
-    --ui-border: #e2dcd6;
-    --ui-border-strong: #cfc6bf;
+    --ui-surface-muted: #ecefff;
+    --ui-surface-soft: #f9faff;
+    --ui-text: #18203d;
+    --ui-text-muted: #69738f;
+    --ui-text-subtle: #8290aa;
+    --ui-border: #e2e6f5;
+    --ui-border-strong: #cdd3ec;
 
     /* Brand: warm plum, intentionally not "space" themed */
-    --ui-primary: #8c2f67;
-    --ui-primary-hover: #742653;
-    --ui-primary-active: #5f1f45;
-    --ui-primary-soft: #f7e8f0;
+    --ui-primary: #6347f5;
+    --ui-primary-hover: #5540e1;
+    --ui-primary-active: #4c33d6;
+    --ui-primary-soft: #ece9ff;
     --ui-primary-contrast: #ffffff;
 
     /* Semantic feedback */
-    --ui-success: #267a53;
+    --ui-success: #119968;
     --ui-success-soft: #e6f5ed;
     --ui-warning: #9a5f08;
     --ui-warning-soft: #fff3d8;
-    --ui-danger: #b53a3a;
+    --ui-danger: #df4b64;
     --ui-danger-soft: #fdeaea;
     --ui-info: #276a91;
     --ui-info-soft: #e7f3fa;
 
     /* Focus and elevation */
-    --ui-focus: #b65b8c;
-    --ui-focus-ring: 0 0 0 3px rgba(182, 91, 140, 0.22);
+    --ui-focus: #836efb;
+    --ui-focus-ring: 0 0 0 3px rgba(99, 71, 245, 0.2);
     --ui-shadow-sm: 0 1px 2px rgba(39, 35, 33, 0.05), 0 1px 4px rgba(39, 35, 33, 0.04);
     --ui-shadow-md: 0 8px 24px rgba(39, 35, 33, 0.08);
     --ui-shadow-lg: 0 18px 46px rgba(39, 35, 33, 0.12);
@@ -125,30 +125,30 @@
 .dark-theme {
     color-scheme: dark;
     --background-image: url('./images/bg-dark.webp');
-    --ui-bg: #161718;
-    --ui-surface: #202224;
-    --ui-surface-raised: #25282a;
-    --ui-surface-muted: #2b2e30;
-    --ui-surface-soft: #1b1d1f;
-    --ui-text: #f3efec;
-    --ui-text-muted: #b9b1ab;
-    --ui-text-subtle: #918983;
-    --ui-border: #363a3c;
-    --ui-border-strong: #4a4f52;
-    --ui-primary: #e07bad;
-    --ui-primary-hover: #ef93bf;
-    --ui-primary-active: #c96798;
-    --ui-primary-soft: #402536;
-    --ui-primary-contrast: #211019;
+    --ui-bg: #0d1125;
+    --ui-surface: #171d34;
+    --ui-surface-raised: #222b45;
+    --ui-surface-muted: #27304c;
+    --ui-surface-soft: #141a30;
+    --ui-text: #f5f6ff;
+    --ui-text-muted: #b4bfdb;
+    --ui-text-subtle: #93a0bf;
+    --ui-border: #343d59;
+    --ui-border-strong: #465175;
+    --ui-primary: #9a86ff;
+    --ui-primary-hover: #b5a7ff;
+    --ui-primary-active: #8070dc;
+    --ui-primary-soft: #2b2854;
+    --ui-primary-contrast: #0d1125;
     --ui-success: #78c9a3;
     --ui-success-soft: #1e3a2e;
     --ui-warning: #edbf68;
     --ui-warning-soft: #41341d;
-    --ui-danger: #ef8585;
+    --ui-danger: #ff8296;
     --ui-danger-soft: #442525;
     --ui-info: #80badd;
     --ui-info-soft: #203746;
-    --ui-focus: #ef93bf;
+    --ui-focus: #b5a7ff;
     --ui-focus-ring: 0 0 0 3px rgba(239, 147, 191, 0.24);
     --ui-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.22);
     --ui-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
@@ -506,3 +506,12 @@ textarea.ui-input {
         animation-iteration-count: 1 !important;
     }
 }
+
+/* PubChat design baseline v1: elevated social surface, interactive states. */
+:root { --ui-brand-cyan: #12bcd5; --ui-brand-gradient: linear-gradient(115deg, #7149ff, #4d54f7); }
+.dark-theme { --ui-brand-cyan: #54d7e9; }
+.ui-button--primary { background: var(--ui-brand-gradient); box-shadow: 0 6px 18px rgba(99,71,245,.18); }
+.ui-button--primary:hover { filter: brightness(1.07); }
+.ui-button--primary:disabled { box-shadow: none; }
+.ui-card, .ui-surface { backdrop-filter: saturate(1.1); }
+@media (prefers-reduced-motion: reduce) { .ui-button, .ui-card, .ui-surface { transition-duration: .01ms !important; scroll-behavior: auto !important; } }
