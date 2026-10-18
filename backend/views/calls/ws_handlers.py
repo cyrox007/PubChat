@@ -82,6 +82,7 @@ def _safe_signal_payload(data: dict) -> dict:
     }
     if action == "call_offer":
         payload["sdp"] = _safe_sdp(data.get("sdp"), "offer")
+        payload["ice_restart"] = data.get("ice_restart") is True
         mode = str(data.get("mode") or "audio")
         payload["mode"] = mode if mode in {"audio", "video"} else "audio"
     elif action == "call_answer":
@@ -141,7 +142,7 @@ async def _handle_signal(websocket: WebSocket, user_uid: UUID, db: AsyncSession,
     payload["from_uid"] = str(user_uid)
     # Preserve the validated offer briefly for an Android app opened from
     # a call wakeup. No SDP/ICE travels via FCM or appears in logs.
-    if payload["signal_type"] == "call_offer":
+    if payload["signal_type"] == "call_offer" and not payload.get("ice_restart"):
         try:
             await save_pending_offer(target_uid, payload)
         except Exception:
@@ -153,7 +154,7 @@ async def _handle_signal(websocket: WebSocket, user_uid: UUID, db: AsyncSession,
         except Exception:
             logger.warning("Pending call cleanup unavailable")
     await call_manager.send_to_user(target_uid, payload)
-    if payload["signal_type"] == "call_offer":
+    if payload["signal_type"] == "call_offer" and not payload.get("ice_restart"):
         try:
             await wake_android_recipient(db, target_uid, payload["call_uid"])
         except Exception:
