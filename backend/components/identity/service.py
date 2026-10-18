@@ -160,12 +160,12 @@ async def create_account_persona(
         is_primary=False,
     )
     db.add(persona)
-    await db.flush()
-    # Secondary Personas must not silently enter discovery or accept unsolicited DM.
-    db.add(PrivacySettings(
-        persona_uid=persona.uid, profile_visibility="private", dm_policy="nobody",
-    ))
     try:
+        await db.flush()
+        # Secondary Personas must not silently enter discovery or accept unsolicited DM.
+        db.add(PrivacySettings(
+            persona_uid=persona.uid, profile_visibility="private", dm_policy="nobody",
+        ))
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -664,6 +664,10 @@ async def update_privacy(
     persona = await selected_persona(db, account.uid, session_uid)
     if not persona:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error_type": "persona_not_found"})
+    if not persona.is_primary:
+        # Account-level messaging policy still reads the canonical Persona.
+        # Do not let the secondary profile pretend to change this policy.
+        raise HTTPException(status_code=409, detail={"error_type": "secondary_privacy_not_supported"})
 
     privacy = await db.get(PrivacySettings, persona.uid)
     if not privacy:
