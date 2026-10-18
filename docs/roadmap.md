@@ -1,5 +1,28 @@
 # Дорожная карта PubChat
 
+## Трёхклиентная продуктовая линия (решение 18.10.2026)
+
+PubChat развивается в трёх репозиториях: Web/backend
+[`cyrox007/PubChat`](https://github.com/cyrox007/PubChat),
+Android [`cyrox007/PubChat-Android`](https://github.com/cyrox007/PubChat-Android)
+и iOS [`cyrox007/PubChat-iOS`](https://github.com/cyrox007/PubChat-iOS).
+
+**Web = Android = iOS по пользовательским возможностям к 1.0.**
+Один backend/API, одни решения по доступу, приватности, модерации и экономике,
+единая сценарная проверка. Раннее завершение web-кода — не завершение общего эпика.
+
+- **0.7 Social Core** — Account/Persona, социальные связи, intent и discovery,
+  единое согласие на DM; старт нативного iOS, закрытие базовых пробелов Android.
+- **0.8 Living Spaces** — Spaces, realtime и social loops, Activities, игры,
+  повторное участие и память сообществ с функциональным паритетом.
+- **0.9 Product Experience** — Safety Center, нативные push, звонки,
+  достижения/репутация, поддержка и экономические функции с паритетом.
+- **1.0 Release** — общая API/contract матрица, автотесты, реальные устройства
+  Web/Android/iOS, безопасность, подписанные мобильные сборки и release gate.
+
+Существующие `0.6.x-alpha` hardening-задачи ниже не отменяются:
+это актуальная инфраструктурная база, на которой строится продуктовая линия.
+
 ## Текущий статус
 
 Release candidate: **`0.6.30-alpha.1`**; last merged `main` checkpoint: **`0.6.29-alpha.1`**.
