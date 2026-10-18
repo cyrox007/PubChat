@@ -28,6 +28,8 @@ Message delivery различает online presence и активный conversa
 
 - **Основная система (backend + веб-клиент):** [cyrox007/PubChat](https://github.com/cyrox007/PubChat), ветка `main` — текущее имя репозитория.
 - **Android-клиент:** [cyrox007/PubChat-Android](https://github.com/cyrox007/PubChat-Android), ветка `master`; нативная разработка продолжается, до beta необходимы тесты на устройствах.
+- **iOS-клиент:** [cyrox007/PubChat-iOS](https://github.com/cyrox007/PubChat-iOS), ветка `main`; SwiftUI foundation и CI-компиляция на GitHub-hosted macOS без локального Mac, продуктовый паритет ещё впереди.
+- **Правило версии 1.0:** Web, Android и iOS равны по пользовательской функциональности; см. [план трёхклиентной разработки](docs/roadmap.md).
 - **Переименование основной системы выполнено:** `cyrox007/chat` → `cyrox007/PubChat`; используйте новый адрес при клонировании и настройке remote.
 
 Подробности, контракт WebRTC/FCM и инструкции на случай переименования: [`docs/client-repositories.md`](docs/client-repositories.md).
