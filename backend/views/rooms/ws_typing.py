@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import HTTPException, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.decorators.db import get_session
+from components.decorators.db import get_realtime_session, release_realtime_session
 from components.moderation.policy import assert_allowed
 from components.realtime import realtime_service
 from socket_manager import room_manager
@@ -80,6 +80,7 @@ class TypingAwareWebSocket:
 
     async def receive_json(self, *args, **kwargs):
         while True:
+            await release_realtime_session(self._db_session)
             data = await self._websocket.receive_json(*args, **kwargs)
             if not isinstance(data, dict) or data.get("type") != "typing":
                 return data
@@ -95,7 +96,7 @@ class TypingAwareWebSocket:
             )
 
 
-@get_session
+@get_realtime_session
 async def handle_websocket_connection(
     websocket: WebSocket,
     room_uid: UUID | str,

@@ -5,10 +5,10 @@ from fastapi import HTTPException, status
 
 logger = setup_logger(__name__)
 
-def get_session(func):
+def get_session(func, *, lazy=False):
     @functools.wraps(func)
     async def _wrapper(*args, **kwargs):
-        db_session = await Database.get_session()
+        db_session = Database.sessionmaker()() if lazy else await Database.get_session()
         try:
             kwargs['db_session'] = db_session
             response = await func(*args, **kwargs)
@@ -33,3 +33,18 @@ def get_session(func):
         finally:
             await db_session.close()
     return _wrapper
+
+
+def get_realtime_session(func):
+    """A WebSocket may live for hours; do not check out a connection on entry."""
+    return get_session(func, lazy=True)
+
+
+async def release_realtime_session(db_session):
+    """Finish the previous frame before waiting for network input.
+
+    AsyncSession.close returns its connection to the pool and resets the session;
+    the same session object can acquire a connection for the next frame.
+    """
+    await db_session.commit()
+    await db_session.close()

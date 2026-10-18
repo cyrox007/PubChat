@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.decorators.db import get_session
+from components.decorators.db import get_realtime_session, release_realtime_session
 from components.moderation.policy import assert_allowed
 from components.realtime import realtime_service
 from socket_manager import call_manager
@@ -165,7 +165,7 @@ async def _handle_signal(websocket: WebSocket, user_uid: UUID, db: AsyncSession,
     )
 
 
-@get_session
+@get_realtime_session
 async def handle_call_connection(websocket: WebSocket, user: dict, db_session: AsyncSession = None):
     user_uid = UUID(str(user["user_uid"]))
     connected = False
@@ -173,6 +173,7 @@ async def handle_call_connection(websocket: WebSocket, user: dict, db_session: A
         await call_manager.connect_to_messenger(websocket, user_uid)
         connected = True
         while True:
+            await release_realtime_session(db_session)
             data = await websocket.receive_json()
             if data.get("type") in {"heartbeat", "pong"} or data.get("action") == "heartbeat":
                 await call_manager.touch_connection(websocket)

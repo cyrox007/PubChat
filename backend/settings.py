@@ -43,8 +43,9 @@ class Config:
     DB_NAME = os.getenv("DB_NAME", "chat")
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
-    DB_POOL_SIZE = max(1, min(200, int(os.getenv("DB_POOL_SIZE", "20"))))
-    DB_POOL_MAX_OVERFLOW = max(0, min(200, int(os.getenv("DB_POOL_MAX_OVERFLOW", "10"))))
+    # Each web/worker process has its own pool; rolling reloads overlap processes.
+    DB_POOL_SIZE = max(1, min(200, int(os.getenv("DB_POOL_SIZE", "5"))))
+    DB_POOL_MAX_OVERFLOW = max(0, min(200, int(os.getenv("DB_POOL_MAX_OVERFLOW", "0"))))
     DB_POOL_TIMEOUT_SECONDS = max(1, min(120, int(os.getenv("DB_POOL_TIMEOUT_SECONDS", "30"))))
     DB_POOL_ALERT_UTILIZATION_PERCENT = max(
         50,
