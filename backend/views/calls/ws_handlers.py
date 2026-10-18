@@ -146,9 +146,10 @@ async def _handle_signal(websocket: WebSocket, user_uid: UUID, db: AsyncSession,
             await save_pending_offer(target_uid, payload)
         except Exception:
             logger.warning("Pending call offer storage unavailable")
-    elif payload["signal_type"] in {"call_end", "call_decline"}:
+    elif payload["signal_type"] in {"call_answer", "call_end", "call_decline"}:
         try:
             await clear_pending_offer(target_uid, payload["call_uid"])
+            await clear_pending_offer(user_uid, payload["call_uid"])
         except Exception:
             logger.warning("Pending call cleanup unavailable")
     await call_manager.send_to_user(target_uid, payload)
