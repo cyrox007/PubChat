@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy import and_, extract, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from components.identity.model import Account, AccountRelationship, Persona, PrivacySettings
 from components.notification.model import MessageNotificationPreference, UserNotification
@@ -36,23 +37,28 @@ async def sync_friend_birthdays(
     viewer = UUID(str(viewer_uid))
 
     # Recipient must explicitly opt in. No setting means no reminder.
-    preference = await db.get(MessageNotificationPreference, viewer)
+    preference = await db.get(MessageNotificationPreference, viewer, with_for_update=True)
     if not preference or not preference.friend_birthday_reminders:
         return 0
 
     # A mutual friend relationship is mandatory, independent of public discovery.
-    mutual = select(AccountRelationship.id).where(
-        AccountRelationship.from_account_uid == Persona.account_uid,
-        AccountRelationship.to_account_uid == viewer,
-        AccountRelationship.relation_type == "friend",
+    forward = aliased(AccountRelationship)
+    reciprocal = aliased(AccountRelationship)
+    ban = aliased(AccountRelationship)
+    # Distinct aliases are necessary: reusing the joined friendship table
+    # would correlate away the reverse-friend/block EXISTS clauses.
+    mutual = select(reciprocal.id).where(
+        reciprocal.from_account_uid == Persona.account_uid,
+        reciprocal.to_account_uid == viewer,
+        reciprocal.relation_type == "friend",
     ).exists()
-    blocked = select(AccountRelationship.id).where(
-        AccountRelationship.relation_type == "block",
+    blocked = select(ban.id).where(
+        ban.relation_type == "block",
         or_(
-            and_(AccountRelationship.from_account_uid == viewer,
-                 AccountRelationship.to_account_uid == Persona.account_uid),
-            and_(AccountRelationship.from_account_uid == Persona.account_uid,
-                 AccountRelationship.to_account_uid == viewer),
+            and_(ban.from_account_uid == viewer,
+                 ban.to_account_uid == Persona.account_uid),
+            and_(ban.from_account_uid == Persona.account_uid,
+                 ban.to_account_uid == viewer),
         ),
     ).exists()
 
@@ -72,10 +78,10 @@ async def sync_friend_birthdays(
         select(Persona)
         .join(Account, Account.uid == Persona.account_uid)
         .join(PrivacySettings, PrivacySettings.persona_uid == Persona.uid)
-        .join(AccountRelationship, and_(
-            AccountRelationship.to_account_uid == Persona.account_uid,
-            AccountRelationship.from_account_uid == viewer,
-            AccountRelationship.relation_type == "friend",
+        .join(forward, and_(
+            forward.to_account_uid == Persona.account_uid,
+            forward.from_account_uid == viewer,
+            forward.relation_type == "friend",
         ))
         .where(
             Persona.account_uid != viewer,
@@ -90,6 +96,7 @@ async def sync_friend_birthdays(
         )
         .order_by(Persona.account_uid)
         .limit(MAX_BIRTHDAYS_PER_ACCOUNT)
+        .with_for_update(of=PrivacySettings)
     )
     count = 0
     for person in result.scalars().all():
