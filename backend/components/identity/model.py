@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -60,6 +61,7 @@ class Persona(Database.Base):
         UniqueConstraint("handle", name="personas_handle_key"),
         Index("ix_personas_handle", "handle", unique=True),
         Index("ix_personas_account_primary", "account_uid", "is_primary"),
+        Index("uq_personas_one_primary_per_account", "account_uid", unique=True, postgresql_where=text("is_primary = true")),
     )
 
 
