@@ -37,6 +37,23 @@ class ProfilesBatchRequest(BaseModel):
     account_uids: list[UUID] = Field(min_length=1, max_length=100)
 
 
+class PersonaCreateRequest(BaseModel):
+    handle: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.]+$")
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    bio: Optional[str] = Field(default=None, max_length=500)
+    social_intent: SocialIntent = "open"
+
+    @field_validator("handle")
+    @classmethod
+    def normalize_handle(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value else value
+
+
 class PersonaUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     avatar: Optional[str] = Field(default=None, max_length=255)

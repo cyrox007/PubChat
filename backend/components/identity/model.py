@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -60,6 +61,7 @@ class Persona(Database.Base):
         UniqueConstraint("handle", name="personas_handle_key"),
         Index("ix_personas_handle", "handle", unique=True),
         Index("ix_personas_account_primary", "account_uid", "is_primary"),
+        Index("uq_personas_one_primary_per_account", "account_uid", unique=True, postgresql_where=text("is_primary = true")),
     )
 
 
@@ -89,6 +91,7 @@ class IdentitySession(Database.Base):
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False, index=True)
     device_uid = Column(UUID(as_uuid=True), nullable=False, default=uuid4)
+    active_persona_uid = Column(UUID(as_uuid=True), ForeignKey("personas.uid", ondelete="SET NULL"), nullable=True)
     refresh_token_hash = Column(String(64), nullable=False)
     device_label = Column(String(120), nullable=True)
     user_agent = Column(Text, nullable=True)

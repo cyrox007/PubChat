@@ -61,6 +61,8 @@
 				<p>{{ contactPolicyDescription }}</p>
 			</section>
 
+			<PersonaSwitcher v-if="profile.is_self" @activated="refreshActivePersona" />
+
 			<AchievementShelf :account-uid="profile.uid" :is-self="profile.is_self" />
 
 			<Transition name="ui-state">
@@ -108,7 +110,7 @@
 						</select>
 					</label>
 
-					<label class="field">
+					<label v-if="identity.persona?.is_primary !== false" class="field">
 						<span>Кто может начинать личный диалог</span>
 						<select v-model="privacyForm.dm_policy" class="ui-input">
 							<option value="everyone">Все</option>
@@ -118,7 +120,7 @@
 						</select>
 					</label>
 
-					<label class="toggle-row field--wide">
+					<label v-if="identity.persona?.is_primary !== false" class="toggle-row field--wide">
 						<input v-model="privacyForm.show_location" type="checkbox" />
 						<span>
 							<strong>Показывать город и страну</strong>
@@ -126,6 +128,9 @@
 						</span>
 					</label>
 
+					<p v-if="identity.persona?.is_primary === false" class="field--wide">
+						Дополнительный образ пока приватен. Политика личных сообщений остаётся у основного Persona.
+					</p>
 					<div class="settings-actions field--wide">
 						<button class="ui-button ui-button--primary" type="submit" :disabled="isSaving" :aria-busy="isSaving ? 'true' : 'false'">
 							<span v-if="isSaving" class="button-pending"><span class="ui-spinner" aria-hidden="true"></span>Сохраняем…</span>
@@ -148,6 +153,7 @@ import AuthService from '@/API/AuthService';
 import CSRFService from '@/API/CSRFService';
 import EngagementService from '@/API/EngagementService';
 import AchievementShelf from '@/components/Profile/AchievementShelf.vue';
+import PersonaSwitcher from '@/components/Profile/PersonaSwitcher.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -238,8 +244,16 @@ const loadProfile = async (uid) => {
 	isLoading.value = true;
 	errorMessage.value = '';
 	try {
-		const response = await AuthService.getProfile(uid);
-		profile.value = response.data.profile;
+		if (uid === currentUser.value.uid && identity.value.persona?.is_primary === false) {
+			const persona = identity.value.persona;
+			profile.value = {
+				...persona, uid, persona_uid: persona.uid,
+				is_self: true, contact_policy: identity.value.privacy?.dm_policy || 'nobody',
+			};
+		} else {
+			const response = await AuthService.getProfile(uid);
+			profile.value = response.data.profile;
+		}
 		document.title = `${profile.value.display_name} — PubChat`;
 		hydrateEditForms();
 		await loadProfileAppearance();
@@ -264,6 +278,12 @@ const resolveProfileUid = async () => {
 	await loadProfile(uid);
 };
 
+const refreshActivePersona = async () => {
+	isEditing.value = false;
+	saveMessage.value = '';
+	await loadProfile(currentUser.value.uid);
+};
+
 const toggleEdit = () => {
 	isEditing.value = !isEditing.value;
 	saveMessage.value = '';
@@ -276,8 +296,9 @@ const saveProfile = async () => {
 	try {
 		await CSRFService.getCSRF();
 		const personaResponse = await AuthService.updatePersona({ ...editForm });
-		const privacyResponse = await AuthService.updatePrivacy({ ...privacyForm });
-		const data = privacyResponse.data;
+		const data = identity.value.persona?.is_primary === false
+			? personaResponse.data
+			: (await AuthService.updatePrivacy({ ...privacyForm })).data;
 		store.commit('setUser', data.user || personaResponse.data.user);
 		store.commit('setIdentity', {
 			account: data.account,

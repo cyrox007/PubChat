@@ -41,6 +41,18 @@ export default class AuthService {
 		return $api.get(`/identity/v2/profiles/${accountUid}`);
 	}
 
+	static async personas() {
+		return $api.get('/identity/v2/personas');
+	}
+
+	static async createPersona(data) {
+		return $api.post('/identity/v2/personas', data);
+	}
+
+	static async activatePersona(personaUid) {
+		return $api.post(`/identity/v2/personas/${personaUid}/activate`);
+	}
+
 	static async updatePersona(data) {
 		return $api.patch('/identity/v2/persona', data);
 	}
