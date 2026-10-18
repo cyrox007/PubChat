@@ -17,6 +17,8 @@ from components.notification.schemas import (
     MessageNotificationPreferenceUpdateRequest,
     WebPushSubscriptionRemoveRequest,
     WebPushSubscriptionUpsertRequest,
+    NativePushDeviceUpsertRequest,
+    NativePushDeviceRemoveRequest,
 )
 from components.notification.service import (
     delete_activity_reminder,
@@ -27,6 +29,12 @@ from components.notification.service import (
     set_activity_reminder,
     sync_activity_reminders,
     unread_notification_count,
+)
+from components.notification.native_push import (
+    upsert_native_push_device,
+    list_native_push_devices,
+    revoke_native_push_device,
+    fcm_configured,
 )
 from components.notification.web_push import (
     remove_web_push_subscription,
@@ -112,6 +120,42 @@ def install(app: FastAPI) -> None:
             payload,
         )
         return {"status": "ok", "preferences": preferences}
+
+    @notifications.get("/native-push/config")
+    async def native_push_config(current_user: dict = Depends(auth_middle)):
+        _ = current_user
+        return {"status": "ok", "fcm_enabled": fcm_configured()}
+
+    @notifications.get("/native-push/devices")
+    async def native_push_devices(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account = await _get_account(db, current_user["user_uid"])
+        return {"status": "ok", "devices": await list_native_push_devices(db, account.uid)}
+
+    @notifications.post("/native-push/devices", status_code=status.HTTP_201_CREATED)
+    async def native_push_register(
+        payload: NativePushDeviceUpsertRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account = await _get_account(db, current_user["user_uid"])
+        try:
+            item = await upsert_native_push_device(db, account.uid, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"error_type": str(exc)}) from exc
+        return {"status": "ok", "device": item}
+
+    @notifications.post("/native-push/devices/remove")
+    async def native_push_remove(
+        payload: NativePushDeviceRemoveRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account = await _get_account(db, current_user["user_uid"])
+        removed = await revoke_native_push_device(db, account.uid, payload.installation_uid)
+        return {"status": "ok", "removed": removed}
 
     @notifications.get("/web-push/config")
     async def web_push_config(
