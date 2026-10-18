@@ -34,41 +34,44 @@
     /* Shape */
     --ui-radius-sm: 0.5rem;
     --ui-radius-md: 0.75rem;
-    --ui-radius-lg: 1rem;
-    --ui-radius-xl: 1.375rem;
+    --ui-radius-lg: 1.125rem;
+    --ui-radius-xl: 1.5rem;
     --ui-radius-pill: 999px;
 
-    /* Calm, social-first light palette */
-    --ui-bg: #f6f4f1;
+    /* PubChat 18 Oct 2026 mobile mockup palette: social-first indigo / cyan */
+    --ui-bg: #F7F8FE;
     --ui-surface: #ffffff;
     --ui-surface-raised: #ffffff;
-    --ui-surface-muted: #efebe7;
-    --ui-surface-soft: #faf8f6;
-    --ui-text: #272321;
-    --ui-text-muted: #6f6863;
-    --ui-text-subtle: #8b837d;
-    --ui-border: #e2dcd6;
-    --ui-border-strong: #cfc6bf;
+    --ui-surface-muted: #F1F3FC;
+    --ui-surface-soft: #FBFCFF;
+    --ui-text: #111936;
+    --ui-text-muted: #64718E;
+    --ui-text-subtle: #8390AD;
+    --ui-border: #E7EAF6;
+    --ui-border-strong: #C9D0E6;
 
-    /* Brand: warm plum, intentionally not "space" themed */
-    --ui-primary: #8c2f67;
-    --ui-primary-hover: #742653;
-    --ui-primary-active: #5f1f45;
-    --ui-primary-soft: #f7e8f0;
+    /* Brand: violet-indigo per approved design board */
+    --ui-primary: #6045F6;
+    --ui-primary-hover: #4C32D5;
+    --ui-primary-active: #3421A4;
+    --ui-primary-soft: #EDE9FF;
     --ui-primary-contrast: #ffffff;
+    --ui-accent-cyan: #06C7EC;
+    --ui-accent-coral: #F04461;
+    --ui-brand-gradient: linear-gradient(125deg, #6045F6 0%, #7D5DFF 58%, #06C7EC 100%);
 
     /* Semantic feedback */
-    --ui-success: #267a53;
-    --ui-success-soft: #e6f5ed;
-    --ui-warning: #9a5f08;
-    --ui-warning-soft: #fff3d8;
-    --ui-danger: #b53a3a;
-    --ui-danger-soft: #fdeaea;
-    --ui-info: #276a91;
-    --ui-info-soft: #e7f3fa;
+    --ui-success: #16A46C;
+    --ui-success-soft: #E6F9F0;
+    --ui-warning: #A96713;
+    --ui-warning-soft: #FFF4DE;
+    --ui-danger: #F04461;
+    --ui-danger-soft: #FFE9EE;
+    --ui-info: #1675A4;
+    --ui-info-soft: #E4F5FF;
 
     /* Focus and elevation */
-    --ui-focus: #b65b8c;
+    --ui-focus: #6045F6;
     --ui-focus-ring: 0 0 0 3px rgba(182, 91, 140, 0.22);
     --ui-shadow-sm: 0 1px 2px rgba(39, 35, 33, 0.05), 0 1px 4px rgba(39, 35, 33, 0.04);
     --ui-shadow-md: 0 8px 24px rgba(39, 35, 33, 0.08);
@@ -125,30 +128,30 @@
 .dark-theme {
     color-scheme: dark;
     --background-image: url('./images/bg-dark.webp');
-    --ui-bg: #161718;
-    --ui-surface: #202224;
-    --ui-surface-raised: #25282a;
-    --ui-surface-muted: #2b2e30;
-    --ui-surface-soft: #1b1d1f;
-    --ui-text: #f3efec;
-    --ui-text-muted: #b9b1ab;
-    --ui-text-subtle: #918983;
-    --ui-border: #363a3c;
-    --ui-border-strong: #4a4f52;
-    --ui-primary: #e07bad;
-    --ui-primary-hover: #ef93bf;
-    --ui-primary-active: #c96798;
-    --ui-primary-soft: #402536;
-    --ui-primary-contrast: #211019;
-    --ui-success: #78c9a3;
-    --ui-success-soft: #1e3a2e;
-    --ui-warning: #edbf68;
-    --ui-warning-soft: #41341d;
-    --ui-danger: #ef8585;
-    --ui-danger-soft: #442525;
-    --ui-info: #80badd;
-    --ui-info-soft: #203746;
-    --ui-focus: #ef93bf;
+    --ui-bg: #0F1426;
+    --ui-surface: #191F35;
+    --ui-surface-raised: #222A44;
+    --ui-surface-muted: #29324F;
+    --ui-surface-soft: #151B2F;
+    --ui-text: #F4F6FF;
+    --ui-text-muted: #A5AED0;
+    --ui-text-subtle: #8A94B4;
+    --ui-border: #343E5B;
+    --ui-border-strong: #4B5572;
+    --ui-primary: #A596FF;
+    --ui-primary-hover: #C3B8FF;
+    --ui-primary-active: #8A77FA;
+    --ui-primary-soft: #302957;
+    --ui-primary-contrast: #0F1426;
+    --ui-success: #74DBAC;
+    --ui-success-soft: #194435;
+    --ui-warning: #FFD17B;
+    --ui-warning-soft: #49391F;
+    --ui-danger: #FF8BA1;
+    --ui-danger-soft: #4F2736;
+    --ui-info: #8BD9FC;
+    --ui-info-soft: #1E354E;
+    --ui-focus: #C3B8FF;
     --ui-focus-ring: 0 0 0 3px rgba(239, 147, 191, 0.24);
     --ui-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.22);
     --ui-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
