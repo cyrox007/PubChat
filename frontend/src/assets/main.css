@@ -38,38 +38,41 @@
     --ui-radius-xl: 1.5rem;
     --ui-radius-pill: 999px;
 
-    /* Calm, social-first light palette */
-    --ui-bg: #f6f7ff;
+    /* PubChat 18 Oct 2026 mobile mockup palette: social-first indigo / cyan */
+    --ui-bg: #F7F8FE;
     --ui-surface: #ffffff;
     --ui-surface-raised: #ffffff;
-    --ui-surface-muted: #ecefff;
-    --ui-surface-soft: #f9faff;
-    --ui-text: #18203d;
-    --ui-text-muted: #69738f;
-    --ui-text-subtle: #8290aa;
-    --ui-border: #e2e6f5;
-    --ui-border-strong: #cdd3ec;
+    --ui-surface-muted: #F1F3FC;
+    --ui-surface-soft: #FBFCFF;
+    --ui-text: #111936;
+    --ui-text-muted: #64718E;
+    --ui-text-subtle: #8390AD;
+    --ui-border: #E7EAF6;
+    --ui-border-strong: #C9D0E6;
 
-    /* Brand: warm plum, intentionally not "space" themed */
-    --ui-primary: #6347f5;
-    --ui-primary-hover: #5540e1;
-    --ui-primary-active: #4c33d6;
-    --ui-primary-soft: #ece9ff;
+    /* Brand: violet-indigo per approved design board */
+    --ui-primary: #6045F6;
+    --ui-primary-hover: #4C32D5;
+    --ui-primary-active: #3421A4;
+    --ui-primary-soft: #EDE9FF;
     --ui-primary-contrast: #ffffff;
+    --ui-accent-cyan: #06C7EC;
+    --ui-accent-coral: #F04461;
+    --ui-brand-gradient: linear-gradient(125deg, #6045F6 0%, #7D5DFF 58%, #06C7EC 100%);
 
     /* Semantic feedback */
-    --ui-success: #119968;
-    --ui-success-soft: #e6f5ed;
-    --ui-warning: #9a5f08;
-    --ui-warning-soft: #fff3d8;
-    --ui-danger: #df4b64;
-    --ui-danger-soft: #fdeaea;
-    --ui-info: #276a91;
-    --ui-info-soft: #e7f3fa;
+    --ui-success: #16A46C;
+    --ui-success-soft: #E6F9F0;
+    --ui-warning: #A96713;
+    --ui-warning-soft: #FFF4DE;
+    --ui-danger: #F04461;
+    --ui-danger-soft: #FFE9EE;
+    --ui-info: #1675A4;
+    --ui-info-soft: #E4F5FF;
 
     /* Focus and elevation */
-    --ui-focus: #836efb;
-    --ui-focus-ring: 0 0 0 3px rgba(99, 71, 245, 0.2);
+    --ui-focus: #6045F6;
+    --ui-focus-ring: 0 0 0 3px rgba(182, 91, 140, 0.22);
     --ui-shadow-sm: 0 1px 2px rgba(39, 35, 33, 0.05), 0 1px 4px rgba(39, 35, 33, 0.04);
     --ui-shadow-md: 0 8px 24px rgba(39, 35, 33, 0.08);
     --ui-shadow-lg: 0 18px 46px rgba(39, 35, 33, 0.12);
@@ -125,30 +128,30 @@
 .dark-theme {
     color-scheme: dark;
     --background-image: url('./images/bg-dark.webp');
-    --ui-bg: #0d1125;
-    --ui-surface: #171d34;
-    --ui-surface-raised: #222b45;
-    --ui-surface-muted: #27304c;
-    --ui-surface-soft: #141a30;
-    --ui-text: #f5f6ff;
-    --ui-text-muted: #b4bfdb;
-    --ui-text-subtle: #93a0bf;
-    --ui-border: #343d59;
-    --ui-border-strong: #465175;
-    --ui-primary: #9a86ff;
-    --ui-primary-hover: #b5a7ff;
-    --ui-primary-active: #8070dc;
-    --ui-primary-soft: #2b2854;
-    --ui-primary-contrast: #0d1125;
-    --ui-success: #78c9a3;
-    --ui-success-soft: #1e3a2e;
-    --ui-warning: #edbf68;
-    --ui-warning-soft: #41341d;
-    --ui-danger: #ff8296;
-    --ui-danger-soft: #442525;
-    --ui-info: #80badd;
-    --ui-info-soft: #203746;
-    --ui-focus: #b5a7ff;
+    --ui-bg: #0F1426;
+    --ui-surface: #191F35;
+    --ui-surface-raised: #222A44;
+    --ui-surface-muted: #29324F;
+    --ui-surface-soft: #151B2F;
+    --ui-text: #F4F6FF;
+    --ui-text-muted: #A5AED0;
+    --ui-text-subtle: #8A94B4;
+    --ui-border: #343E5B;
+    --ui-border-strong: #4B5572;
+    --ui-primary: #A596FF;
+    --ui-primary-hover: #C3B8FF;
+    --ui-primary-active: #8A77FA;
+    --ui-primary-soft: #302957;
+    --ui-primary-contrast: #0F1426;
+    --ui-success: #74DBAC;
+    --ui-success-soft: #194435;
+    --ui-warning: #FFD17B;
+    --ui-warning-soft: #49391F;
+    --ui-danger: #FF8BA1;
+    --ui-danger-soft: #4F2736;
+    --ui-info: #8BD9FC;
+    --ui-info-soft: #1E354E;
+    --ui-focus: #C3B8FF;
     --ui-focus-ring: 0 0 0 3px rgba(239, 147, 191, 0.24);
     --ui-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.22);
     --ui-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
@@ -506,12 +509,3 @@ textarea.ui-input {
         animation-iteration-count: 1 !important;
     }
 }
-
-/* PubChat design baseline v1: elevated social surface, interactive states. */
-:root { --ui-brand-cyan: #12bcd5; --ui-brand-gradient: linear-gradient(115deg, #7149ff, #4d54f7); }
-.dark-theme { --ui-brand-cyan: #54d7e9; }
-.ui-button--primary { background: var(--ui-brand-gradient); box-shadow: 0 6px 18px rgba(99,71,245,.18); }
-.ui-button--primary:hover { filter: brightness(1.07); }
-.ui-button--primary:disabled { box-shadow: none; }
-.ui-card, .ui-surface { backdrop-filter: saturate(1.1); }
-@media (prefers-reduced-motion: reduce) { .ui-button, .ui-card, .ui-surface { transition-duration: .01ms !important; scroll-behavior: auto !important; } }
