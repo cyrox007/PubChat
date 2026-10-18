@@ -89,6 +89,7 @@ class IdentitySession(Database.Base):
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     account_uid = Column(UUID(as_uuid=True), ForeignKey("accounts.uid", ondelete="CASCADE"), nullable=False, index=True)
     device_uid = Column(UUID(as_uuid=True), nullable=False, default=uuid4)
+    active_persona_uid = Column(UUID(as_uuid=True), ForeignKey("personas.uid", ondelete="SET NULL"), nullable=True)
     refresh_token_hash = Column(String(64), nullable=False)
     device_label = Column(String(120), nullable=True)
     user_agent = Column(Text, nullable=True)
