@@ -221,6 +221,10 @@ async def build_identity_projection(
     persona_data = None
     if persona:
         persona_data = persona_projection(persona)
+        # Self-only field. Never add DOB to the shared/public Persona projection.
+        persona_data["date_of_birth"] = (
+            persona.date_of_birth.isoformat() if persona.date_of_birth else None
+        )
 
     privacy_data = None
     if privacy:
@@ -675,8 +679,21 @@ async def update_privacy(
         privacy = PrivacySettings(persona_uid=persona.uid)
         db.add(privacy)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(privacy, field, value)
+
+    if updates.get("share_birthday_with_friends") is False:
+        # Revocation also erases previously generated birthday alerts, not only
+        # future ones. No remote device ever receives the birth year.
+        from sqlalchemy import delete
+        from components.notification.model import UserNotification
+        await db.execute(
+            delete(UserNotification).where(
+                UserNotification.kind == "friend_birthday",
+                UserNotification.dedupe_key.like(f"friend_birthday:{account.uid}:%"),
+            )
+        )
 
     await db.commit()
     return await build_identity_projection(db, account, session_uid)
