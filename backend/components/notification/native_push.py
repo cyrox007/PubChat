@@ -292,6 +292,18 @@ class FCMProvider:
                 },
             }
         }
+        if payload.get("type") == "call":
+            # Android must receive call data in FirebaseMessagingService so it
+            # can build notification actions. A mixed notification+data FCM
+            # message bypasses onMessageReceived() in the background.
+            # Only generic text and call_uid are delivered, never SDP/ICE.
+            message["message"].pop("notification", None)
+            message["message"]["data"] = {
+                key: str(value) for key, value in payload.items()
+                if key in {"type", "call_uid", "title", "body", "tag"}
+            }
+            message["message"]["android"].pop("notification", None)
+            message["message"]["android"]["ttl"] = "60s"
         request = urllib.request.Request(
             endpoint,
             data=json.dumps(message, separators=(",", ":")).encode("utf-8"),
