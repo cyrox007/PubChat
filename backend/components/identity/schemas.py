@@ -68,4 +68,5 @@ class PrivacyUpdateRequest(BaseModel):
     dm_policy: Optional[DMPolicy] = None
     show_last_seen: Optional[bool] = None
     show_age: Optional[bool] = None
+    share_birthday_with_friends: Optional[bool] = None
     show_location: Optional[bool] = None
