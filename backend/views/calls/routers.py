@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException
 
 from components.auth.middleware import auth_middle
 from settings import config
+from views.calls.pending_offers import get_pending_offer
 
 
 DEFAULT_DEBUG_STUN = "stun:stun.l.google.com:19302"
@@ -87,6 +88,11 @@ def _ice_config(account_uid: UUID | str, now: int | None = None) -> dict:
 
 def install(app: FastAPI) -> None:
     router = APIRouter(prefix="/calls/v1", tags=["calls-v1"])
+
+    @router.get("/pending-offer")
+    async def pending_offer(current_user: dict = Depends(auth_middle)):
+        offer = await get_pending_offer(UUID(str(current_user["user_uid"])))
+        return {"status": "ok", "offer": offer}
 
     @router.get("/ice-config")
     async def ice_config(current_user: dict = Depends(auth_middle)):
