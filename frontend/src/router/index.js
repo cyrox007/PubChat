@@ -8,6 +8,7 @@ const router = createRouter({
 		{ path: '/registration', name: 'registration', component: () => import('../views/RegistrationView.vue'), meta: { title: 'Создать образ — PubChat', requestGuest: true } },
 		{ path: '/', name: 'chats', component: () => import('../views/SpaceDiscoveryView.vue'), meta: { title: 'Пространства — PubChat', requestAuth: true } },
 		{ path: '/people', name: 'people', component: () => import('../views/PeopleDiscoveryView.vue'), meta: { title: 'Люди — PubChat', requestAuth: true } },
+		{ path: '/friends', name: 'friends', component: () => import('../views/FriendshipHubView.vue'), meta: { title: 'Друзья и заявки — PubChat', requestAuth: true } },
 		{ path: '/invitations', name: 'invitations', component: () => import('../views/InvitationsView.vue'), meta: { title: 'Приглашения — PubChat', requestAuth: true } },
 		{ path: '/notifications', name: 'notifications', component: () => import('../views/NotificationsView.vue'), meta: { title: 'Напоминания — PubChat', requestAuth: true } },
 		{ path: '/safety', name: 'safety', component: () => import('../views/SafetyCenterView.vue'), meta: { title: 'Безопасность — PubChat', requestAuth: true } },

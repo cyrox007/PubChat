@@ -161,6 +161,21 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/messenger$/);
   await expect(page.locator('a[href="/messenger"]:visible').first()).toBeVisible();
 
+  // Friendship Hub: the native and Web clients share the same Account-based
+  // friend-request contract. Verify authenticated navigation and all three
+  // consent states without relying on synthetic server responses.
+  const peopleLink = page.locator('a[href="/people"]:visible').first();
+  await peopleLink.click();
+  await expect(page).toHaveURL(new RegExp('/people$'));
+  await page.getByRole('link', { name: 'Друзья и заявки' }).click();
+  await expect(page).toHaveURL(new RegExp('/friends$'));
+  await expect(page.getByRole('heading', { name: 'Друзья и заявки' })).toBeVisible();
+  const socialNav = page.getByRole('navigation', { name: 'Разделы дружбы' });
+  await socialNav.getByRole('button', { name: 'Исходящие' }).click();
+  await socialNav.getByRole('button', { name: 'Друзья', exact: true }).click();
+  await socialNav.getByRole('button', { name: 'Входящие' }).click();
+  await expect(socialNav.getByRole('button', { name: 'Входящие' })).toHaveAttribute('aria-current', 'page');
+
   // Browser defaults differ in headless environments, so permission state is not
   // a reliable prompt signal. Count direct requestPermission calls instead.
   const permissionRequests = await page.evaluate(
