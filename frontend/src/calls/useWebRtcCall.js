@@ -165,6 +165,18 @@ const handleSignal = async (data) => {
 	if (data.type !== 'call_signal') return;
 	const fromUid = data.from_uid;
 	if (data.signal_type === 'call_offer') {
+		if (data.ice_restart === true && state.callUid === data.call_uid && state.peerUid === fromUid && peerConnection) {
+			try {
+				if (peerConnection.signalingState !== 'stable') return;
+				await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+				const answer = await peerConnection.createAnswer();
+				await peerConnection.setLocalDescription(answer);
+				sendSignal('call_answer', { sdp: peerConnection.localDescription.toJSON() });
+				await flushCandidates();
+				setPhase('connecting');
+			} catch (_) { setPhase('error', 'Не удалось восстановить соединение'); }
+			return;
+		}
 		if (state.phase !== 'idle') {
 			const oldPeer = state.peerUid;
 			const oldCall = state.callUid;
