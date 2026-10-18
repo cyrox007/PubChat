@@ -1,5 +1,5 @@
 <template>
-	<aside class="space-panel" :class="{ active: isActive }" aria-label="Информация о пространстве">
+	<aside class="space-panel" :class="{ active: isActive || workspaceSection, 'space-panel--workspace': workspaceSection }" aria-label="Информация о пространстве">
 		<header class="space-panel__header">
 			<div>
 				<span>О пространстве</span>
@@ -9,6 +9,10 @@
 				<i class="fas fa-xmark" aria-hidden="true"></i>
 			</button>
 		</header>
+
+		<SpaceContextNavigation :space-uid="String(roomInfo.uid)" :can-manage="canManage" />
+		<SpaceWorkspacePanel v-if="workspaceSection" :space-uid="String(roomInfo.uid)" :section="workspaceSection" />
+		<template v-else>
 
 		<div class="panel-tabs" :class="{ 'panel-tabs--manager': canManage }" role="tablist" aria-label="Разделы пространства">
 			<button type="button" role="tab" :aria-selected="activeTab === 'info'" :class="{ active: activeTab === 'info' }" @click="activeTab = 'info'">
@@ -60,6 +64,11 @@
 					<span>Создатель и модераторы управляют только этим пространством. Роль здесь не даёт глобального статуса в PubChat.</span>
 				</div>
 			</div>
+			<RouterLink class="room-return" :to="{ name: 'chats' }">← К списку пространств</RouterLink>
+			<button v-if="!isOwner" class="room-leave" type="button" :disabled="leaving" @click="leaveSpace">
+				{{ leaving ? 'Выходим…' : 'Покинуть пространство' }}
+			</button>
+			<p v-if="leaveError" class="room-leave-error" role="alert">{{ leaveError }}</p>
 		</section>
 
 		<section v-else-if="activeTab === 'people'" class="panel-content panel-content--people">
@@ -110,7 +119,7 @@
 			</button>
 		</section>
 
-		<section v-else class="panel-content panel-content--people">
+		<section v-else-if="activeTab === 'requests' && canManage" class="panel-content panel-content--people">
 			<div v-if="loadingPending" class="panel-loading">Проверяем заявки…</div>
 			<div v-else-if="pendingMembers.length" class="people-list">
 				<article v-for="member in pendingMembers" :key="member.account_uid" class="person-row person-row--request">
@@ -136,15 +145,18 @@
 				<span>Когда кто-то попросится в пространство, запрос появится здесь.</span>
 			</div>
 		</section>
+		</template>
 	</aside>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 import SpacesService from '@/API/SpacesService';
+import SpaceContextNavigation from '@/components/Spaces/SpaceContextNavigation.vue';
+import SpaceWorkspacePanel from '@/components/Spaces/SpaceWorkspacePanel.vue';
 
 const props = defineProps({
 	isActive: { type: Boolean, default: false },
@@ -154,6 +166,24 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'user-banned', 'membership-changed']);
 const store = useStore();
+const route = useRoute();
+const router = useRouter();
+const leaving = ref(false);
+const leaveError = ref('');
+const leaveSpace = async () => {
+	if (isOwner.value || leaving.value || !window.confirm('Покинуть это пространство? Для возвращения потребуется вступить снова.')) return;
+	leaving.value = true;
+	leaveError.value = '';
+	try {
+		await SpacesService.leave(props.roomInfo.uid);
+		await router.push({ name: 'chats' });
+	} catch { leaveError.value = 'Не удалось покинуть пространство. Попробуйте ещё раз.'; }
+	finally { leaving.value = false; }
+};
+const workspaceSection = computed(() => ({
+	'space-community': 'community', 'space-life': 'life',
+	'space-support': 'support', 'space-moderation': 'moderation',
+}[route.name] || ''));
 const activeTab = ref('info');
 const activeUserMenu = ref(null);
 const activeMembers = ref([]);
@@ -295,6 +325,7 @@ watch(
 
 <style scoped>
 .space-panel { position: relative; width: 21rem; min-width: 21rem; height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--ui-border); background: var(--ui-surface); }
+.space-panel--workspace { position: absolute; inset: 0 0 0 auto; z-index: 45; width: min(44rem, 100%); min-width: 0; box-shadow: var(--ui-shadow-lg); }
 .space-panel__header { min-height: 4.25rem; display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-4); }
 .space-panel__header > div { min-width: 0; display: grid; }
 .space-panel__header span { color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
@@ -320,6 +351,8 @@ watch(
 .panel-note div { display: grid; gap: .2rem; }
 .panel-note strong { color: var(--ui-text); font-size: var(--ui-text-sm); }
 .panel-note span { font-size: var(--ui-text-xs); line-height: 1.45; }
+.room-return, .room-leave { display: block; width: 100%; margin-top: var(--ui-space-3); padding: .7rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: transparent; color: var(--ui-text-muted); text-align: center; text-decoration: none; font: inherit; cursor: pointer; }
+.room-leave, .room-leave-error { color: var(--ui-danger); }
 .panel-content--people { padding-inline: var(--ui-space-2); }
 .panel-loading, .people-empty { min-height: 11rem; display: grid; place-items: center; align-content: center; gap: var(--ui-space-2); padding: var(--ui-space-4); color: var(--ui-text-subtle); text-align: center; }
 .people-empty i { font-size: 1.5rem; color: var(--ui-primary); }
@@ -351,4 +384,5 @@ watch(
 .request-action--approve { background: var(--ui-success-soft); color: var(--ui-success); border-color: transparent; }
 .load-more { width: calc(100% - var(--ui-space-2)); min-height: 2.5rem; margin: var(--ui-space-3) var(--ui-space-1) 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text-muted); cursor: pointer; }
 @media (max-width: 1100px) { .space-panel { position: absolute; top: 0; right: 0; z-index: 40; width: min(21rem, 92vw); min-width: 0; transform: translateX(105%); box-shadow: var(--ui-shadow-lg); transition: transform var(--ui-motion-normal) var(--ui-ease); } .space-panel.active { transform: translateX(0); } }
+@media (max-width: 1100px) { .space-panel--workspace { width: min(44rem, 100%); z-index: 45; } }
 </style>
