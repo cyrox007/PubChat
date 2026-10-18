@@ -24,6 +24,14 @@ Message delivery различает online presence и активный conversa
 
 Канонический номер версии находится в `VERSION`, история выпусков — в `CHANGELOG.md`.
 
+## Репозитории и нативные клиенты
+
+- **Основная система (backend + веб-клиент):** [cyrox007/chat](https://github.com/cyrox007/chat), ветка `main` — текущее имя репозитория.
+- **Android-клиент:** [cyrox007/PubChat-Android](https://github.com/cyrox007/PubChat-Android), ветка `master`; нативная разработка продолжается, до beta необходимы тесты на устройствах.
+- **Планируемое имя основного репозитория:** `cyrox007/PubChat` (пока не переименован). Старый URL `PubChat` в данный момент ведёт к Android-репозиторию; не используйте его для клонирования backend.
+
+Подробности, контракт WebRTC/FCM и инструкции на случай переименования: [`docs/client-repositories.md`](docs/client-repositories.md).
+
 ## Документация
 
 Полный индекс: [`docs/README.md`](docs/README.md).
@@ -68,7 +76,7 @@ Backend: Python 3.12, FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 16 CI baseline,
 
 Frontend: Vue 3 SPA/PWA, Vite, Vue Router, Vuex, Axios, Service Worker/Push API.
 
-SPA является первым клиентом; backend API и realtime contracts проектируются reusable для будущих Android/iOS клиентов.
+SPA — основной веб-клиент; отдельный [Android-клиент](https://github.com/cyrox007/PubChat-Android) уже разрабатывается поверх общего API/realtime. Клиент iOS пока не создан.
 
 ## Ключевые правила
 
