@@ -61,6 +61,8 @@
 				<p>{{ contactPolicyDescription }}</p>
 			</section>
 
+			<PersonaSwitcher v-if="profile.is_self" @activated="refreshActivePersona" />
+
 			<AchievementShelf :account-uid="profile.uid" :is-self="profile.is_self" />
 
 			<Transition name="ui-state">
@@ -148,6 +150,7 @@ import AuthService from '@/API/AuthService';
 import CSRFService from '@/API/CSRFService';
 import EngagementService from '@/API/EngagementService';
 import AchievementShelf from '@/components/Profile/AchievementShelf.vue';
+import PersonaSwitcher from '@/components/Profile/PersonaSwitcher.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -238,8 +241,16 @@ const loadProfile = async (uid) => {
 	isLoading.value = true;
 	errorMessage.value = '';
 	try {
-		const response = await AuthService.getProfile(uid);
-		profile.value = response.data.profile;
+		if (uid === currentUser.value.uid && identity.value.persona?.is_primary === false) {
+			const persona = identity.value.persona;
+			profile.value = {
+				...persona, uid, persona_uid: persona.uid,
+				is_self: true, contact_policy: identity.value.privacy?.dm_policy || 'nobody',
+			};
+		} else {
+			const response = await AuthService.getProfile(uid);
+			profile.value = response.data.profile;
+		}
 		document.title = `${profile.value.display_name} — PubChat`;
 		hydrateEditForms();
 		await loadProfileAppearance();
@@ -262,6 +273,12 @@ const resolveProfileUid = async () => {
 		return;
 	}
 	await loadProfile(uid);
+};
+
+const refreshActivePersona = async () => {
+	isEditing.value = false;
+	saveMessage.value = '';
+	await loadProfile(currentUser.value.uid);
 };
 
 const toggleEdit = () => {
