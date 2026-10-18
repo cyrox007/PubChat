@@ -81,4 +81,4 @@ Graph, Spaces/Activities, Messenger и E2EE, звонки и фоновые пе
 Целевые milestones: 0.7 Social Core, 0.8 Living Spaces,
 0.9 Product Experience, затем 1.0 parity/release gate.
 Матрица исходного iOS-среза ведётся в
-[PubChat-iOS/docs/PARITY_MATRIX.md](https://github.com/cyrox007/PubChat-iOS/blob/feat/ios-foundation-ci/docs/PARITY_MATRIX.md).
+[PubChat-iOS/docs/PARITY_MATRIX.md](https://github.com/cyrox007/PubChat-iOS/blob/main/docs/PARITY_MATRIX.md).
