@@ -252,7 +252,7 @@
 
 /* Space information: the close button is meaningful only when the panel overlays content. */
 @media (min-width: 1101px) {
-  .app-shell .space-panel__header .icon-button {
+  .app-shell .space-panel:not(.space-panel--workspace) .space-panel__header .icon-button {
     display: none;
   }
 
