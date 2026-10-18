@@ -229,6 +229,7 @@ async def build_identity_projection(
             "dm_policy": privacy.dm_policy,
             "show_last_seen": privacy.show_last_seen,
             "show_age": privacy.show_age,
+            "share_birthday_with_friends": privacy.share_birthday_with_friends,
             "show_location": privacy.show_location,
         }
 
