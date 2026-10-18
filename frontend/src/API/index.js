@@ -7,6 +7,35 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replac
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
+// A full document navigation cancels in-flight XHR in WebKit. Give safe reads
+// an explicit cancellation lifecycle before the browser tears down the page,
+// instead of leaving their promises to fail with an access-control error.
+// Never cancel mutations or realtime ticket issuance here: the server may
+// already have committed the operation.
+const READ_ONLY_POST_PATHS = new Set([
+    '/identity/v2/personas/batch',
+    '/users/statuses',
+    '/spaces/v1/live-state',
+]);
+const pendingDocumentReads = new Set();
+const shouldCancelOnPageHide = (requestConfig) => {
+    const method = String(requestConfig.method || 'get').toLowerCase();
+    const path = String(requestConfig.url || '').split('?')[0];
+    return method === 'get' || (method === 'post' && READ_ONLY_POST_PATHS.has(path));
+};
+
+const releaseDocumentRead = (requestConfig) => {
+    const controller = requestConfig?._documentReadController;
+    if (controller) pendingDocumentReads.delete(controller);
+};
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => {
+        for (const controller of pendingDocumentReads) controller.abort('document navigation');
+        pendingDocumentReads.clear();
+    });
+}
+
 const $api = axios.create({
     withCredentials: true,
     baseURL: API_BASE_URL,
@@ -92,6 +121,12 @@ $api.interceptors.request.use(async (requestConfig) => {
     const method = String(config.method || 'get').toLowerCase();
     config.headers = config.headers || {};
     config.headers[AUTH_DEVICE_HEADER] = getAuthDeviceId();
+    if (!config.signal && shouldCancelOnPageHide(config)) {
+        const controller = new AbortController();
+        config.signal = controller.signal;
+        config._documentReadController = controller;
+        pendingDocumentReads.add(controller);
+    }
 
     if (UNSAFE_METHODS.has(method)) {
         const token = await ensureCsrfToken();
@@ -107,10 +142,12 @@ $api.interceptors.request.use(async (requestConfig) => {
 
 $api.interceptors.response.use(
     (response) => {
+        releaseDocumentRead(response.config);
         response.data = normalizePublicAssetFields(response.data);
         return response;
     },
     async (error) => {
+        releaseDocumentRead(error.config);
         const originalRequest = error.config;
         const status = error.response?.status;
         const detail = error.response?.data?.detail;
