@@ -4,11 +4,11 @@
 
 | Назначение | Репозиторий | Основная ветка |
 | --- | --- | --- |
-| Backend, API, Web SPA/PWA, эксплуатационные инструкции | [cyrox007/chat](https://github.com/cyrox007/chat) | `main` |
+| Backend, API, Web SPA/PWA, эксплуатационные инструкции | [cyrox007/chat](https://github.com/cyrox007/PubChat) | `main` |
 | Нативное приложение Android | [cyrox007/PubChat-Android](https://github.com/cyrox007/PubChat-Android) | `master` |
 | Нативное приложение iOS | Не создано | — |
 
-**Переименование основного репозитория** в `cyrox007/PubChat` обсуждается, но пока **не выполнено**. В данный момент адрес `cyrox007/PubChat` перенаправляется на Android-репозиторий после его переименования. До фактического изменения не используйте его как ссылку на backend/web, иначе команды клонирования попадут не туда.
+**Переименование выполнено:** основной backend/web репозиторий теперь `cyrox007/PubChat`; прежний `cyrox007/chat` может перенаправляться на новый адрес. Используйте только канонические URL.
 
 ## Правила совместимости и источники истины
 
@@ -27,9 +27,9 @@
 
 ## Процедура изменения имени основного репозитория
 
-После фактического переименования `cyrox007/chat` → `cyrox007/PubChat`:
+После фактического переименования `cyrox007/PubChat` → `cyrox007/PubChat`:
 
-1. Проверить через GitHub, что **именно серверный репозиторий** имеет новое имя и прежний идентификатор; не полагаться на redirect по старому адресу `PubChat`.
+1. Проверено по GitHub: серверный репозиторий имеет идентификатор `950435997` и каноническое имя `cyrox007/PubChat`.
 2. Сменить remote в существующих клонах backend: `git remote set-url origin https://github.com/cyrox007/PubChat.git`.
 3. Обновить ссылки в README, документации обоих проектов, scripts/CI badge, инструкции деплоя и внешние интеграции (webhooks, GitHub Apps, tokens, permissions).
 4. Проверить GitHub Actions, workflows с явным `repository`, checkout, branch protection/environment secrets и деплой, не раскрывая секреты.
