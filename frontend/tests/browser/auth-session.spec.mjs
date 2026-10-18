@@ -115,6 +115,35 @@ test('registration, refresh rotation, logout and login survive real browser cook
     expect(viewport.roomBottom).toBeLessThanOrEqual(viewport.navTop + 2);
   }
 
+  // Room management stays inside the same mounted conversation, including mobile.
+  const composer = page.getByPlaceholder('Сообщение', { exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Unsent room draft');
+  await page.evaluate(() => { window.__roomConversation = document.querySelector('.conversation-area'); });
+  await page.getByRole('button', { name: 'Открыть информацию о пространстве' }).click();
+  const roomPanel = page.getByRole('complementary', { name: 'Информация о пространстве' });
+  const roomNavigation = roomPanel.getByRole('navigation', { name: 'Навигация пространства' });
+  await expect(roomNavigation).toBeVisible();
+  await expect(page.locator('.app-shell > .space-context-nav')).toHaveCount(0);
+  await roomNavigation.getByRole('link', { name: 'Центр', exact: true }).click();
+  await expect(roomPanel.getByPlaceholder('Например: Без личных оскорблений')).toBeVisible();
+  await roomPanel.getByPlaceholder('Например: Без личных оскорблений').fill('Browser room rule');
+  await roomPanel.getByPlaceholder('Коротко объясните правило и зачем оно нужно').fill('Rule from the room panel');
+  await roomPanel.getByRole('button', { name: 'Добавить правило' }).click();
+  await expect(roomPanel.getByRole('heading', { name: 'Browser room rule' })).toBeVisible();
+  await roomNavigation.getByRole('link', { name: 'Модерация', exact: true }).click();
+  await expect(roomPanel.getByRole('button', { name: /Жалобы/ })).toBeVisible();
+  expect(await page.evaluate(() => window.__roomConversation === document.querySelector('.conversation-area'))).toBe(true);
+  await roomPanel.getByRole('button', { name: 'Закрыть панель' }).click();
+  await expect(page).toHaveURL(/\/spaces\/[^/]+$/);
+  await expect(composer).toHaveValue('Unsent room draft');
+
+  // Direct links use the same room shell rather than a detached admin page.
+  const roomUrl = page.url();
+  await page.goto(`${roomUrl}/moderation`);
+  await expect(page.locator('.space-shell')).toBeVisible();
+  await expect(page.locator('.space-panel--workspace')).toBeVisible();
+
   // Core authenticated surfaces should remain routable after refresh recovery.
   await page.goto('/messenger');
   await expect(page).toHaveURL(/\/messenger$/);

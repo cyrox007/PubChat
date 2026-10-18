@@ -9,8 +9,6 @@ import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vu
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
-import SpaceContextNavigation from '@/components/Spaces/SpaceContextNavigation.vue';
-import SpacePulsePanel from '@/components/Spaces/SpacePulsePanel.vue';
 
 const store = useStore();
 const route = useRoute();
@@ -35,7 +33,6 @@ const spaceContextUid = computed(() => {
 	if (!SPACE_CONTEXT_ROUTES.has(String(route.name || ''))) return '';
 	return String(route.params.uid || '');
 });
-const spacePulseUid = computed(() => route.name === 'space-life' ? String(route.params.uid || '') : '');
 
 const clearBootstrapRetry = () => {
 	if (bootstrapRetryTimer) {
@@ -240,7 +237,6 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 		<MessageNotifications />
 		<CallOverlay />
 		<HeaderComponent />
-		<SpaceContextNavigation v-if="spaceContextUid" :space-uid="spaceContextUid" />
 		<PwaInstallPrompt />
 		<PwaUpdateNotice />
 
@@ -267,10 +263,9 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 		</transition>
 
 		<main class="container app-content" :aria-busy="routePending ? 'true' : 'false'">
-			<SpacePulsePanel v-if="spacePulseUid" :space-uid="spacePulseUid" />
 			<RouterView v-slot="{ Component, route: routedView }">
 				<Transition name="ui-route">
-					<div :key="routedView.fullPath" class="route-view-frame">
+					<div :key="spaceContextUid ? `space:${spaceContextUid}` : routedView.fullPath" class="route-view-frame">
 						<component :is="Component" />
 					</div>
 				</Transition>

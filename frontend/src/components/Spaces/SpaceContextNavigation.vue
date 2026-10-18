@@ -11,6 +11,7 @@
 				<RouterLink :to="communityRoute">Центр</RouterLink>
 				<RouterLink :to="lifeRoute">Жизнь</RouterLink>
 				<RouterLink :to="supportRoute">Поддержка</RouterLink>
+				<RouterLink v-if="canManage" :to="moderationRoute">Модерация</RouterLink>
 			</div>
 		</div>
 	</nav>
@@ -23,6 +24,7 @@ import { useStore } from 'vuex';
 
 const props = defineProps({
 	spaceUid: { type: String, required: true },
+	canManage: { type: Boolean, default: false },
 });
 
 const store = useStore();
@@ -37,13 +39,12 @@ const spaceRoute = computed(() => ({ name: 'space', params: routeParams.value })
 const communityRoute = computed(() => ({ name: 'space-community', params: routeParams.value }));
 const lifeRoute = computed(() => ({ name: 'space-life', params: routeParams.value }));
 const supportRoute = computed(() => ({ name: 'space-support', params: routeParams.value }));
+const moderationRoute = computed(() => ({ name: 'space-moderation', params: routeParams.value }));
 </script>
 
 <style scoped>
 .space-context-nav {
-	position: sticky;
-	top: 3.75rem;
-	z-index: 110;
+	flex: 0 0 auto;
 	border-bottom: 1px solid var(--ui-border);
 	background: color-mix(in srgb, var(--ui-surface) 96%, transparent);
 	backdrop-filter: blur(14px);
@@ -52,11 +53,10 @@ const supportRoute = computed(() => ({ name: 'space-support', params: routeParam
 	width: min(100%, var(--ui-container-max, 1200px));
 	min-height: 2.85rem;
 	margin: 0 auto;
-	display: flex;
+	display: block;
 	align-items: center;
 	gap: var(--ui-space-2);
-	padding: .25rem var(--ui-space-4);
-	overflow-x: auto;
+	padding: .25rem var(--ui-space-3);
 	overflow-y: hidden;
 	overscroll-behavior-inline: contain;
 	scrollbar-width: none;
@@ -64,9 +64,9 @@ const supportRoute = computed(() => ({ name: 'space-support', params: routeParam
 }
 .space-context-nav__inner::-webkit-scrollbar { display: none; }
 .space-context-nav__identity {
+	display: none;
 	min-width: 0;
 	max-width: 15rem;
-	display: inline-flex;
 	align-items: center;
 	gap: .45rem;
 	flex: 0 1 auto;
@@ -90,6 +90,7 @@ const supportRoute = computed(() => ({ name: 'space-support', params: routeParam
 	box-shadow: 0 0 0 .16rem color-mix(in srgb, var(--ui-success) 12%, transparent);
 }
 .space-context-nav__divider {
+	display: none;
 	width: 1px;
 	height: 1.4rem;
 	flex: 0 0 1px;
@@ -97,6 +98,7 @@ const supportRoute = computed(() => ({ name: 'space-support', params: routeParam
 }
 .space-context-nav__links {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: .15rem;
 	flex: 0 0 auto;
@@ -118,7 +120,6 @@ const supportRoute = computed(() => ({ name: 'space-support', params: routeParam
 	color: var(--ui-primary);
 }
 @media (max-width: 720px) {
-	.space-context-nav { top: var(--ui-mobile-topbar-height); }
 	.space-context-nav__inner { min-height: 2.6rem; padding: .2rem var(--ui-space-3); gap: .35rem; }
 	.space-context-nav__identity { max-width: 8.5rem; }
 	.space-context-nav__identity strong,
