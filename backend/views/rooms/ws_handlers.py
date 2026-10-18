@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.decorators.db import get_session
+from components.decorators.db import get_realtime_session, release_realtime_session
 from components.message.model import Message
 from components.moderation.policy import assert_allowed
 from components.moderation.abuse_signals import record_rate_limit_signal
@@ -200,6 +200,7 @@ async def process_incoming_messages(
     db_session: AsyncSession,
 ) -> None:
     while True:
+        await release_realtime_session(db_session)
         data = await websocket.receive_json()
         frame_type = data.get("type")
 
@@ -569,7 +570,7 @@ async def handle_ban_user(
         return {"type": "error", "error_type": "space_restriction_failed"}
 
 
-@get_session
+@get_realtime_session
 async def handle_websocket_connection(
     websocket: WebSocket,
     room_uid: UUID | str,
