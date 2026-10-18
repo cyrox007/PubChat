@@ -87,6 +87,7 @@ def install(app: FastAPI) -> None:
         db: AsyncSession = Depends(Database.session_generator),
     ):
         await sync_activity_reminders(db, current_user["user_uid"])
+        await sync_friend_birthdays(db, current_user["user_uid"])
         unread = await unread_notification_count(db, current_user["user_uid"])
         return {"status": "ok", "unread": unread}
 
