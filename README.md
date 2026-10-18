@@ -119,3 +119,7 @@ SPA является первым клиентом; backend API и realtime cont
 - private evidence paths are server-only and retention keeps the evidence copy until a dedicated deletion policy applies;
 - every action requires report claim ownership, explicit media permission and moderation authority over the target Account;
 - moderator UI exposes deliberate human controls; AI and automation cannot perform punitive media actions.
+
+### Incoming Android call wakeup (v1)
+
+After a validated `call_offer`, the server saves a single account-scoped SDP offer for 60 seconds under Redis key `pubchat:calls:pending:v1:{account_uid}`. Authenticated `GET /calls/v1/pending-offer` returns that account's current offer; clients must reconnect to ticket-authenticated `/ws/v2/calls` and ask the user before answering. FCM call alert is best-effort and contains **no SDP, ICE, names or message content**. A sender may still cancel a call before the push is seen. Pending offers are cleared on answer/end/decline when possible and expire automatically. Server needs Redis and FCM credentials for recovery+wakeup.
