@@ -166,9 +166,9 @@ test('registration, refresh rotation, logout and login survive real browser cook
   // consent states without relying on synthetic server responses.
   const peopleLink = page.locator('a[href="/people"]:visible').first();
   await peopleLink.click();
-  await expect(page).toHaveURL(/\\/people$/);
+  await expect(page).toHaveURL(new RegExp('/people$'));
   await page.getByRole('link', { name: 'Друзья и заявки' }).click();
-  await expect(page).toHaveURL(/\\/friends$/);
+  await expect(page).toHaveURL(new RegExp('/friends$'));
   await expect(page.getByRole('heading', { name: 'Друзья и заявки' })).toBeVisible();
   const socialNav = page.getByRole('navigation', { name: 'Разделы дружбы' });
   await socialNav.getByRole('button', { name: 'Исходящие' }).click();
