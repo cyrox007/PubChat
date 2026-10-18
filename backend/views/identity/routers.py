@@ -9,6 +9,7 @@ from components.identity.legacy import rotate_session_with_legacy_fallback
 from components.identity.model import Persona
 from components.identity.schemas import (
     LoginRequest,
+    PersonaCreateRequest,
     PersonaUpdateRequest,
     PrivacyUpdateRequest,
     ProfilesBatchRequest,
@@ -18,6 +19,10 @@ from components.identity.service import (
     authenticate_account,
     build_identity_projection,
     build_public_profile,
+    list_account_personas,
+    create_account_persona,
+    activate_account_persona,
+    persona_projection,
     get_account_by_uid,
     list_account_sessions,
     register_account,
@@ -52,8 +57,11 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
-async def _identity_response(db: AsyncSession, account, tokens: dict | None = None) -> dict:
-    projection = await build_identity_projection(db, account)
+async def _identity_response(
+    db: AsyncSession, account, tokens: dict | None = None,
+    session_uid: str | None = None,
+) -> dict:
+    projection = await build_identity_projection(db, account, session_uid)
     result = {
         "status": "ok",
         **projection,
@@ -158,7 +166,7 @@ def install(app: FastAPI):
         db: AsyncSession = Depends(Database.session_generator),
     ):
         account = await get_account_by_uid(db, current_user["user_uid"])
-        return await _identity_response(db, account)
+        return await _identity_response(db, account, session_uid=current_user.get("session_uid"))
 
     @router.get("/sessions")
     async def sessions(
@@ -230,6 +238,42 @@ def install(app: FastAPI):
             )
         return {"status": "ok", "revoked": revoked}
 
+    @router.get("/personas")
+    async def list_personas(
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account = await get_account_by_uid(db, current_user["user_uid"])
+        return {
+            "status": "ok",
+            **await list_account_personas(db, account.uid, current_user.get("session_uid")),
+        }
+
+    @router.post("/personas", status_code=status.HTTP_201_CREATED)
+    async def create_persona(
+        payload: PersonaCreateRequest,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        await assert_allowed(db, current_user["user_uid"], "profile.edit")
+        account = await get_account_by_uid(db, current_user["user_uid"])
+        persona = await create_account_persona(db, account, payload)
+        return {"status": "ok", "persona": persona_projection(persona)}
+
+    @router.post("/personas/{persona_uid}/activate")
+    async def activate_persona(
+        persona_uid: UUID,
+        current_user: dict = Depends(auth_middle),
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        account = await get_account_by_uid(db, current_user["user_uid"])
+        await activate_account_persona(
+            db, account.uid, current_user.get("session_uid"), persona_uid
+        )
+        return await _identity_response(
+            db, account, session_uid=current_user.get("session_uid")
+        )
+
     @router.post("/personas/batch")
     async def batch_personas(
         payload: ProfilesBatchRequest,
@@ -285,7 +329,7 @@ def install(app: FastAPI):
     ):
         await assert_allowed(db, current_user["user_uid"], "profile.edit")
         account = await get_account_by_uid(db, current_user["user_uid"])
-        return {"status": "ok", **(await update_primary_persona(db, account, payload))}
+        return {"status": "ok", **(await update_primary_persona(db, account, payload, current_user.get("session_uid")))}
 
     @router.patch("/privacy")
     async def patch_privacy(
@@ -294,6 +338,6 @@ def install(app: FastAPI):
         db: AsyncSession = Depends(Database.session_generator),
     ):
         account = await get_account_by_uid(db, current_user["user_uid"])
-        return {"status": "ok", **(await update_privacy(db, account, payload))}
+        return {"status": "ok", **(await update_privacy(db, account, payload, current_user.get("session_uid")))}
 
     app.include_router(router)
