@@ -138,14 +138,26 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/spaces\/[^/]+$/);
   await expect(composer).toHaveValue('Unsent room draft');
 
-  // Direct links use the same room shell rather than a detached admin page.
+  // Verify a cold deep link in its own page instead of destroying the
+  // authenticated room document while it may still have read requests in
+  // flight. WebKit can report the normal unload cancellation as a page error
+  // ("due to access control checks"), hiding genuine application failures.
+  // The second tab shares the real HttpOnly session and must bootstrap itself.
   const roomUrl = page.url();
-  await page.goto(`${roomUrl}/moderation`);
-  await expect(page.locator('.space-shell')).toBeVisible();
-  await expect(page.locator('.space-panel--workspace')).toBeVisible();
+  const deepLinkPage = await context.newPage();
+  const deepLinkErrors = [];
+  deepLinkPage.on('pageerror', (error) => deepLinkErrors.push(String(error)));
+  await deepLinkPage.goto(`${roomUrl}/moderation`);
+  await expect(deepLinkPage.locator('.space-shell')).toBeVisible();
+  await expect(deepLinkPage.locator('.space-panel--workspace')).toBeVisible();
+  expect(deepLinkErrors).toEqual([]);
+  await deepLinkPage.close();
 
-  // Core authenticated surfaces should remain routable after refresh recovery.
-  await page.goto('/messenger');
+  // Test actual SPA route navigation without tearing down the document:
+  // a route switch must preserve auth, realtime lifecycle and the shell.
+  const messengerLink = page.locator('a[href="/messenger"]:visible').first();
+  await expect(messengerLink).toBeVisible();
+  await messengerLink.click();
   await expect(page).toHaveURL(/\/messenger$/);
   await expect(page.locator('a[href="/messenger"]:visible').first()).toBeVisible();
 
