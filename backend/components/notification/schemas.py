@@ -23,6 +23,7 @@ class MessageNotificationPreferenceUpdateRequest(BaseModel):
     web_push_space: bool | None = None
     native_push_messenger: bool | None = None
     native_push_space: bool | None = None
+    friend_birthday_reminders: bool | None = None
 
 
 class WebPushKeys(BaseModel):

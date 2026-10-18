@@ -3,11 +3,12 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from components.identity.model import Account
-from components.notification.model import ActivityReminderPreference, NotificationWorkerState
+from components.notification.model import ActivityReminderPreference, MessageNotificationPreference, NotificationWorkerState
+from components.notification.birthday import sync_friend_birthdays
 from components.notification.service import sync_activity_reminders
 from utils.logger import setup_logger
 
@@ -39,19 +40,23 @@ async def reminder_account_page(
 ) -> list[UUID]:
     bounded_limit = max(1, min(int(limit), MAX_WORKER_BATCH_SIZE))
     stmt = (
-        select(ActivityReminderPreference.account_uid)
-        .join(Account, Account.uid == ActivityReminderPreference.account_uid)
+        select(Account.uid)
+        .outerjoin(ActivityReminderPreference, Account.uid == ActivityReminderPreference.account_uid)
+        .outerjoin(MessageNotificationPreference, Account.uid == MessageNotificationPreference.account_uid)
         .where(
-            ActivityReminderPreference.enabled.is_(True),
+            or_(
+                ActivityReminderPreference.enabled.is_(True),
+                MessageNotificationPreference.friend_birthday_reminders.is_(True),
+            ),
             Account.status == "active",
             Account.deleted_at.is_(None),
         )
         .distinct()
-        .order_by(ActivityReminderPreference.account_uid.asc())
+        .order_by(Account.uid.asc())
         .limit(bounded_limit)
     )
     if after_uid is not None:
-        stmt = stmt.where(ActivityReminderPreference.account_uid > after_uid)
+        stmt = stmt.where(Account.uid > after_uid)
 
     result = await db.execute(stmt)
     return [account_uid for (account_uid,) in result.all()]
@@ -82,6 +87,7 @@ async def reconcile_reminder_accounts(
         async with session_factory() as db:
             try:
                 await sync_activity_reminders(db, account_uid, now=now)
+                await sync_friend_birthdays(db, account_uid, now=now)
                 synced += 1
             except HTTPException as exc:
                 await db.rollback()

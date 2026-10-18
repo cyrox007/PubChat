@@ -24,6 +24,7 @@ DEFAULT_MESSAGE_NOTIFICATION_PREFERENCES = {
     "web_push_space": False,
     "native_push_messenger": False,
     "native_push_space": False,
+    "friend_birthday_reminders": False,
 }
 
 
@@ -42,6 +43,7 @@ def message_notification_preference_projection(
         "web_push_space": bool(item.web_push_space),
         "native_push_messenger": bool(item.native_push_messenger),
         "native_push_space": bool(item.native_push_space),
+        "friend_birthday_reminders": bool(item.friend_birthday_reminders),
     }
 
 

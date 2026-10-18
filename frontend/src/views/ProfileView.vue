@@ -110,6 +110,19 @@
 						</select>
 					</label>
 
+
+                    <label v-if="identity.persona?.is_primary !== false" class="field">
+                        <span>Дата рождения (видна только вам)</span>
+                        <input v-model="editForm.date_of_birth" class="ui-input" type="date" min="1900-01-01" :max="new Date().toISOString().slice(0, 10)" />
+                    </label>
+                    <label v-if="identity.persona?.is_primary !== false" class="toggle-row field--wide">
+                        <input v-model="privacyForm.share_birthday_with_friends" type="checkbox" />
+                        <span>
+                            <strong>Напоминать моим друзьям о дне рождения</strong>
+                            <small>По умолчанию выключено. Друзья узнают только о самом дне, без года рождения. Отмена удаляет созданные напоминания.</small>
+                        </span>
+                    </label>
+
 					<label v-if="identity.persona?.is_primary !== false" class="field">
 						<span>Кто может начинать личный диалог</span>
 						<select v-model="privacyForm.dm_policy" class="ui-input">
@@ -168,8 +181,8 @@ const isSaving = ref(false);
 const saveMessage = ref('');
 const saveState = ref('success');
 
-const editForm = reactive({ display_name: '', bio: '', city: '', country: '', social_intent: 'open' });
-const privacyForm = reactive({ dm_policy: 'shared_spaces', show_location: false });
+const editForm = reactive({ display_name: '', bio: '', city: '', country: '', social_intent: 'open', date_of_birth: '' });
+const privacyForm = reactive({ dm_policy: 'shared_spaces', show_location: false, share_birthday_with_friends: false });
 
 const currentUser = computed(() => store.getters.getUser || {});
 const identity = computed(() => store.getters.getIdentity || {});
@@ -224,8 +237,10 @@ const hydrateEditForms = () => {
 	editForm.city = profile.value.city || '';
 	editForm.country = profile.value.country || '';
 	editForm.social_intent = profile.value.social_intent || 'open';
+	editForm.date_of_birth = identity.value.persona?.date_of_birth || '';
 	privacyForm.dm_policy = identity.value.privacy?.dm_policy || profile.value.contact_policy || 'shared_spaces';
 	privacyForm.show_location = Boolean(identity.value.privacy?.show_location);
+	privacyForm.share_birthday_with_friends = Boolean(identity.value.privacy?.share_birthday_with_friends);
 };
 
 const loadProfileAppearance = async () => {
@@ -295,7 +310,10 @@ const saveProfile = async () => {
 	saveMessage.value = '';
 	try {
 		await CSRFService.getCSRF();
-		const personaResponse = await AuthService.updatePersona({ ...editForm });
+		const { date_of_birth, ...personaFields } = editForm;
+		const personaPayload = identity.value.persona?.is_primary === false
+			? personaFields : { ...personaFields, date_of_birth: date_of_birth || null };
+		const personaResponse = await AuthService.updatePersona(personaPayload);
 		const data = identity.value.persona?.is_primary === false
 			? personaResponse.data
 			: (await AuthService.updatePrivacy({ ...privacyForm })).data;

@@ -118,6 +118,7 @@ class PrivacySettings(Database.Base):
     dm_policy = Column(String(32), nullable=False, default="shared_spaces")
     show_last_seen = Column(Boolean, nullable=False, default=True)
     show_age = Column(Boolean, nullable=False, default=False)
+    share_birthday_with_friends = Column(Boolean, nullable=False, default=False)
     show_location = Column(Boolean, nullable=False, default=False)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

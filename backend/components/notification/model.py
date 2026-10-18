@@ -35,6 +35,7 @@ class MessageNotificationPreference(Database.Base):
     web_push_space = Column(Boolean, nullable=False, default=False)
     native_push_messenger = Column(Boolean, nullable=False, default=False)
     native_push_space = Column(Boolean, nullable=False, default=False)
+    friend_birthday_reminders = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal, Optional
 from uuid import UUID
 
@@ -61,6 +62,14 @@ class PersonaUpdateRequest(BaseModel):
     city: Optional[str] = Field(default=None, max_length=100)
     country: Optional[str] = Field(default=None, max_length=100)
     social_intent: Optional[SocialIntent] = None
+    date_of_birth: Optional[date] = None
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_date_of_birth(cls, value: date | None) -> date | None:
+        if value is not None and (value >= date.today() or value.year < 1900):
+            raise ValueError("invalid_date_of_birth")
+        return value
 
 
 class PrivacyUpdateRequest(BaseModel):
@@ -68,4 +77,5 @@ class PrivacyUpdateRequest(BaseModel):
     dm_policy: Optional[DMPolicy] = None
     show_last_seen: Optional[bool] = None
     show_age: Optional[bool] = None
+    share_birthday_with_friends: Optional[bool] = None
     show_location: Optional[bool] = None

@@ -60,7 +60,16 @@
 				</div>
 			</div>
 
-			<p class="delivery-note">Разрешение браузера запрашивается только после нажатия «Включить push». Для iPhone/iPad web push используется установленным на экран «Домой» PWA, если версия системы это поддерживает.</p>
+            <label class="delivery-option">
+                <span class="delivery-option__icon"><i class="fas fa-cake-candles" aria-hidden="true"></i></span>
+                <span class="delivery-option__copy">
+                    <strong>Дни рождения друзей</strong>
+                    <small>Напоминать во внутреннем центре PubChat только о днях рождения друзей, которые разрешили это в настройках. Год рождения не передаётся.</small>
+                </span>
+                <input type="checkbox" :checked="preferences.friend_birthday_reminders"
+                    :disabled="deliveryLoading || savingBirthday" @change="toggleBirthdayReminders" />
+            </label>
+            <p class="delivery-note">Дни рождения пока доступны во внутреннем центре, без гарантированной доставки в фон. Для системного push необходим транспорт платформы. Разрешение браузера запрашивается только после нажатия «Включить push».</p>
 		</section>
 
 		<section v-if="loading" class="state-card" role="status">Синхронизируем напоминания…</section>
@@ -119,9 +128,11 @@ const unread = computed(() => store.getters['notifications/unread']);
 const deliveryLoading = ref(false);
 const deliveryError = ref('');
 const savingEmail = ref(false);
+const savingBirthday = ref(false);
 const savingPush = ref(false);
 const preferences = ref({
 	email_unread_dm_nudge: false,
+	friend_birthday_reminders: false,
 	web_push_messenger: false,
 });
 const pushState = ref({
@@ -174,6 +185,22 @@ const toggleEmailNudge = async (event) => {
 	} finally {
 		savingEmail.value = false;
 	}
+};
+
+const toggleBirthdayReminders = async (event) => {
+    const enabled = Boolean(event.target.checked);
+    savingBirthday.value = true;
+    deliveryError.value = '';
+    try {
+        const response = await NotificationService.updateMessagePreferences({ friend_birthday_reminders: enabled });
+        preferences.value = { ...preferences.value, ...(response.data?.preferences || {}) };
+        if (enabled) await load();
+    } catch {
+        event.target.checked = !enabled;
+        deliveryError.value = 'Не удалось изменить напоминания о днях рождения.';
+    } finally {
+        savingBirthday.value = false;
+    }
 };
 
 const toggleWebPush = async () => {
