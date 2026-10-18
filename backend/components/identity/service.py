@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.device.model import UserDevice
@@ -17,7 +18,9 @@ from components.identity.model import (
     PlatformRole,
     PrivacySettings,
 )
-from components.identity.schemas import PersonaUpdateRequest, PrivacyUpdateRequest, RegisterRequest
+from components.identity.schemas import (
+    PersonaCreateRequest, PersonaUpdateRequest, PrivacyUpdateRequest, RegisterRequest,
+)
 from components.user.model import User
 from services.auth_service import generate_tokens
 from settings import config
@@ -79,6 +82,128 @@ async def _primary_persona(db: AsyncSession, account_uid: UUID) -> Persona | Non
     return result.scalar_one_or_none()
 
 
+async def selected_persona(
+    db: AsyncSession, account_uid: UUID, session_uid: str | None = None
+) -> Persona | None:
+    # Tokens identify the Account, never a user-controlled Persona.
+    if session_uid:
+        try:
+            sid = UUID(str(session_uid))
+        except (ValueError, TypeError):
+            sid = None
+        if sid:
+            result = await db.execute(
+                select(IdentitySession.active_persona_uid).where(
+                    IdentitySession.uid == sid,
+                    IdentitySession.account_uid == account_uid,
+                    IdentitySession.revoked_at.is_(None),
+                    IdentitySession.expires_at > datetime.utcnow(),
+                ).limit(1)
+            )
+            selected = result.scalar_one_or_none()
+            if selected:
+                persona = await db.get(Persona, selected)
+                if persona and persona.account_uid == account_uid:
+                    return persona
+    return await _primary_persona(db, account_uid)
+
+
+def persona_projection(persona: Persona) -> dict:
+    return {
+        "uid": str(persona.uid),
+        "handle": persona.handle,
+        "display_name": persona.display_name,
+        "avatar": persona.avatar,
+        "bio": persona.bio,
+        "city": persona.city,
+        "country": persona.country,
+        "social_intent": persona.social_intent,
+        "is_primary": persona.is_primary,
+    }
+
+
+async def list_account_personas(db: AsyncSession, account_uid: UUID, session_uid: str | None) -> dict:
+    result = await db.execute(
+        select(Persona).where(Persona.account_uid == account_uid)
+        .order_by(Persona.is_primary.desc(), Persona.created_at.asc(), Persona.uid.asc())
+    )
+    personas = result.scalars().all()
+    active = await selected_persona(db, account_uid, session_uid)
+    return {
+        "personas": [persona_projection(item) for item in personas],
+        "active_persona_uid": str(active.uid) if active else None,
+    }
+
+
+async def create_account_persona(
+    db: AsyncSession, account: Account, payload: PersonaCreateRequest,
+) -> Persona:
+    # Serialize concurrent creates under the same Account to enforce a cap.
+    await db.execute(select(Account.uid).where(Account.uid == account.uid).with_for_update())
+    count = await db.scalar(
+        select(func.count(Persona.uid)).where(Persona.account_uid == account.uid)
+    )
+    if (count or 0) >= 3:
+        raise HTTPException(status_code=409, detail={"error_type": "persona_limit_reached"})
+
+    handle = payload.handle.strip()
+    existing = await db.scalar(
+        select(Persona.uid).where(func.lower(Persona.handle) == handle.casefold()).limit(1)
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail={"error_type": "handle_taken", "field": "handle"})
+
+    persona = Persona(
+        account_uid=account.uid, handle=handle,
+        display_name=payload.display_name or handle,
+        bio=payload.bio, social_intent=payload.social_intent,
+        is_primary=False,
+    )
+    db.add(persona)
+    await db.flush()
+    # Secondary Personas must not silently enter discovery or accept unsolicited DM.
+    db.add(PrivacySettings(
+        persona_uid=persona.uid, profile_visibility="private", dm_policy="nobody",
+    ))
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail={"error_type": "handle_taken", "field": "handle"}
+        ) from exc
+    await db.refresh(persona)
+    return persona
+
+
+async def activate_account_persona(
+    db: AsyncSession, account_uid: UUID, session_uid: str | None, persona_uid: UUID
+) -> None:
+    if not session_uid:
+        raise HTTPException(status_code=409, detail={"error_type": "session_identity_required"})
+    try:
+        sid = UUID(str(session_uid))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail={"error_type": "invalid_session"}) from exc
+
+    result = await db.execute(
+        select(IdentitySession).where(
+            IdentitySession.uid == sid, IdentitySession.account_uid == account_uid,
+            IdentitySession.revoked_at.is_(None),
+            IdentitySession.expires_at > datetime.utcnow(),
+        ).with_for_update().limit(1)
+    )
+    identity_session = result.scalar_one_or_none()
+    if identity_session is None:
+        raise HTTPException(status_code=401, detail={"error_type": "session_revoked"})
+    persona = await db.get(Persona, persona_uid)
+    if persona is None or persona.account_uid != account_uid:
+        # Avoid disclosing another Account's Personas.
+        raise HTTPException(status_code=404, detail={"error_type": "persona_not_found"})
+    identity_session.active_persona_uid = None if persona.is_primary else persona.uid
+    await db.commit()
+
+
 async def _legacy_user_by_uid(db: AsyncSession, user_uid: UUID | None) -> User | None:
     if not user_uid:
         return None
@@ -86,24 +211,16 @@ async def _legacy_user_by_uid(db: AsyncSession, user_uid: UUID | None) -> User |
     return result.scalar_one_or_none()
 
 
-async def build_identity_projection(db: AsyncSession, account: Account) -> dict:
-    persona = await _primary_persona(db, account.uid)
+async def build_identity_projection(
+    db: AsyncSession, account: Account, session_uid: str | None = None
+) -> dict:
+    persona = await selected_persona(db, account.uid, session_uid)
     role = await _role_name(db, account.uid)
     privacy = await db.get(PrivacySettings, persona.uid) if persona else None
 
     persona_data = None
     if persona:
-        persona_data = {
-            "uid": str(persona.uid),
-            "handle": persona.handle,
-            "display_name": persona.display_name,
-            "avatar": persona.avatar,
-            "bio": persona.bio,
-            "city": persona.city,
-            "country": persona.country,
-            "social_intent": persona.social_intent,
-            "is_primary": persona.is_primary,
-        }
+        persona_data = persona_projection(persona)
 
     privacy_data = None
     if privacy:
@@ -517,8 +634,11 @@ async def get_account_by_uid(db: AsyncSession, account_uid: str) -> Account:
     return account
 
 
-async def update_primary_persona(db: AsyncSession, account: Account, payload: PersonaUpdateRequest) -> dict:
-    persona = await _primary_persona(db, account.uid)
+async def update_primary_persona(
+    db: AsyncSession, account: Account, payload: PersonaUpdateRequest,
+    session_uid: str | None = None,
+) -> dict:
+    persona = await selected_persona(db, account.uid, session_uid)
     if not persona:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error_type": "persona_not_found"})
 
@@ -527,18 +647,21 @@ async def update_primary_persona(db: AsyncSession, account: Account, payload: Pe
         setattr(persona, field, value)
 
     legacy_user = await _legacy_user_by_uid(db, account.legacy_user_uid)
-    if legacy_user:
+    if legacy_user and persona.is_primary:
         for field in ("avatar", "bio", "city", "country"):
             if field in updates:
                 setattr(legacy_user, field, updates[field])
 
     await db.commit()
     await db.refresh(persona)
-    return await build_identity_projection(db, account)
+    return await build_identity_projection(db, account, session_uid)
 
 
-async def update_privacy(db: AsyncSession, account: Account, payload: PrivacyUpdateRequest) -> dict:
-    persona = await _primary_persona(db, account.uid)
+async def update_privacy(
+    db: AsyncSession, account: Account, payload: PrivacyUpdateRequest,
+    session_uid: str | None = None,
+) -> dict:
+    persona = await selected_persona(db, account.uid, session_uid)
     if not persona:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error_type": "persona_not_found"})
 
@@ -551,4 +674,4 @@ async def update_privacy(db: AsyncSession, account: Account, payload: PrivacyUpd
         setattr(privacy, field, value)
 
     await db.commit()
-    return await build_identity_projection(db, account)
+    return await build_identity_projection(db, account, session_uid)
