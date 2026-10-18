@@ -26,9 +26,9 @@ Message delivery различает online presence и активный conversa
 
 ## Репозитории и нативные клиенты
 
-- **Основная система (backend + веб-клиент):** [cyrox007/chat](https://github.com/cyrox007/chat), ветка `main` — текущее имя репозитория.
+- **Основная система (backend + веб-клиент):** [cyrox007/PubChat](https://github.com/cyrox007/PubChat), ветка `main` — текущее имя репозитория.
 - **Android-клиент:** [cyrox007/PubChat-Android](https://github.com/cyrox007/PubChat-Android), ветка `master`; нативная разработка продолжается, до beta необходимы тесты на устройствах.
-- **Планируемое имя основного репозитория:** `cyrox007/PubChat` (пока не переименован). Старый URL `PubChat` в данный момент ведёт к Android-репозиторию; не используйте его для клонирования backend.
+- **Переименование основной системы выполнено:** `cyrox007/chat` → `cyrox007/PubChat`; используйте новый адрес при клонировании и настройке remote.
 
 Подробности, контракт WebRTC/FCM и инструкции на случай переименования: [`docs/client-repositories.md`](docs/client-repositories.md).
 
