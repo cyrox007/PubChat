@@ -84,7 +84,7 @@ class SpaceTypingContractTests(unittest.IsolatedAsyncioTestCase):
         )
         room_uid = uuid4()
         user_uid = uuid4()
-        proxy = TypingAwareWebSocket(websocket, room_uid, user_uid, MagicMock())
+        proxy = TypingAwareWebSocket(websocket, room_uid, user_uid, AsyncMock())
 
         result = await proxy.receive_json()
 

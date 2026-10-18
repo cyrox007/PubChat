@@ -5,7 +5,7 @@ from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.decorators.db import get_session
+from components.decorators.db import get_realtime_session, release_realtime_session
 from components.identity.model import AccountRelationship, Persona, PrivacySettings
 from components.message.model import PrivateMessage
 from components.moderation.policy import assert_allowed
@@ -228,6 +228,7 @@ async def handle_private_messages(
     db_session: AsyncSession,
 ) -> None:
     while True:
+        await release_realtime_session(db_session)
         data = await websocket.receive_json()
         action = data.get("action")
         frame_type = data.get("type")
@@ -524,7 +525,7 @@ async def handle_get_conversation(
         )
 
 
-@get_session
+@get_realtime_session
 async def handle_messenger_connection(
     websocket: WebSocket,
     user: dict,

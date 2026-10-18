@@ -1,6 +1,7 @@
 import asyncio
 import os
 import unittest
+from tests.test_realtime_database_lifetime import RealtimeDatabasePoolIntegrationTests  # noqa: F401
 
 from sqlalchemy import text
 
