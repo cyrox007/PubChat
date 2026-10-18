@@ -21,6 +21,11 @@
 - [`ui-ux-discovery.md`](ui-ux-discovery.md) — explainable organic discovery UX rules.
 - [`ui-ux-pwa.md`](ui-ux-pwa.md) — install/update/offline UX extension.
 
+## Клиенты и репозитории
+
+- [`client-repositories.md`](client-repositories.md) — фактические адреса GitHub, границы backend/Android, WebRTC и FCM contracts, beta gate и процедура будущего переименования.
+- [PubChat Android README](https://github.com/cyrox007/PubChat-Android/blob/master/README.md) — установка, реализованный функционал и ограничения Android-клиента.
+
 ## Для разработчика
 
 - [`architecture.md`](architecture.md) — модули, домены, данные и границы ответственности.
