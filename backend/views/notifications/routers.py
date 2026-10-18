@@ -20,6 +20,7 @@ from components.notification.schemas import (
     NativePushDeviceUpsertRequest,
     NativePushDeviceRemoveRequest,
 )
+from components.notification.birthday import sync_friend_birthdays
 from components.notification.service import (
     delete_activity_reminder,
     list_notifications,
