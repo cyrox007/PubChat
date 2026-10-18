@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from components.identity.model import Account
-from components.notification.model import ActivityReminderPreference, NotificationWorkerState
+from components.notification.model import ActivityReminderPreference, MessageNotificationPreference, NotificationWorkerState
+from components.notification.birthday import sync_friend_birthdays
 from components.notification.service import sync_activity_reminders
 from utils.logger import setup_logger
 
