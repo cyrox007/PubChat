@@ -6,6 +6,7 @@
 				<h1>Находите людей по атмосфере, а не по рейтингу</h1>
 				<p>Публичные образы и люди из общих пространств. Приватность и блокировки применяются сервером до выдачи результатов.</p>
 			</div>
+			<RouterLink class="ui-button ui-button--ghost" :to="{ name: 'friends' }">Друзья и заявки</RouterLink>
 			<RouterLink class="ui-button ui-button--ghost" :to="{ name: 'invitations' }">
 				<i class="fas fa-envelope-open-text" aria-hidden="true"></i>
 				Приглашения
