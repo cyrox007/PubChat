@@ -252,3 +252,59 @@
     transition: none !important;
   }
 }
+
+/* Mobile Room: a single bounded viewport column. The previous setup combined
+   App padding for fixed nav with an independently guessed Room height, leaving
+   a background-image strip between composer and nav on short devices. */
+@media (max-width: 720px) {
+  .app-shell:has(.space-shell) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    padding-bottom: calc(var(--ui-mobile-nav-height) + env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+  .app-shell:has(.space-shell) > .app-topbar {
+    flex: 0 0 auto;
+  }
+  .app-shell > .app-content:has(.space-shell) {
+    display: flex;
+    flex: 1 1 0%;
+    flex-direction: column;
+    min-height: 0;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .app-shell > .app-content:has(.space-shell) > .route-view-frame {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+  }
+  .app-shell > .app-content:has(.space-shell) .space-shell {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100% !important;
+    min-height: 0;
+    margin: 0;
+  }
+  .app-shell .conversation-area > .live-presence {
+    display: none !important;
+  }
+  .app-shell .conversation-area {
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+  .app-shell .conversation-area > .composer {
+    grid-row: 3;
+  }
+  /* Room messages scroll, while composer and navigation stay in view. */
+  .app-shell .space-main,
+  .app-shell .conversation-area {
+    min-height: 0;
+    min-width: 0;
+  }
+}
