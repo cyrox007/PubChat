@@ -1,5 +1,5 @@
 <template>
-  <main class="category-admin">
+  <div class="category-admin">
     <header class="category-admin__header">
       <div>
         <span class="category-admin__eyebrow">Living Spaces · Справочники</span>
@@ -77,7 +77,7 @@
         </li>
       </ol>
     </section>
-  </main>
+  </div>
 </template>
 
 <script setup>
