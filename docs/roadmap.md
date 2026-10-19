@@ -2,6 +2,8 @@
 
 ## Трёхклиентная продуктовая линия (решение 18.10.2026)
 
+**Текущий факт по пользовательским сценариям — [живой реестр Web / Android / iOS](cross-client-delivery-status.md).** Его нужно обновлять по merge commit/PR и результатам CI/device QA при каждом новом срезе. Этот roadmap описывает последовательность этапов, не является списком отсутствующих функций.
+
 PubChat развивается в трёх репозиториях: Web/backend
 [`cyrox007/PubChat`](https://github.com/cyrox007/PubChat),
 Android [`cyrox007/PubChat-Android`](https://github.com/cyrox007/PubChat-Android)
@@ -25,9 +27,9 @@ Android [`cyrox007/PubChat-Android`](https://github.com/cyrox007/PubChat-Android
 
 ## Текущий статус
 
-Release candidate: **`0.6.30-alpha.1`**; last merged `main` checkpoint: **`0.6.29-alpha.1`**.
+Последний документированный **`0.6.x` checkpoint — `0.6.30-alpha.1`** (см. CHANGELOG). Далее в `main` уже включены продуктовые срезы Social Core и Spaces; нельзя считать последний номер checkpoint состоянием всех функций клиента.
 
-Current milestone: **`0.6.x-alpha`** — Pre-beta hardening продолжается.
+Текущая продуктовая линия: **`0.7 Social Core` → `0.8 Living Spaces` → `0.9 Product Experience` → `1.0 parity/release`**. Точный статус кода/CI/реальных устройств — в [живом реестре](cross-client-delivery-status.md).
 
 Уже закреплены CI: PostgreSQL migration/recovery, Redis distributed/restart recovery, real Sentinel promotion, multi-process Uvicorn/WebSocket rolling restart, bounded backpressure, production deploy continuity, message notification policy с distributed active-context suppression, durable unread-Messenger email delivery, Web Push/PWA Messenger delivery, full `account.access` enforcement и fine-grained platform moderation permission boundaries.
 
