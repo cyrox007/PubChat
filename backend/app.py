@@ -89,8 +89,9 @@ def create_app() -> FastAPI:
     discovery_routes.install(app)
     user_routes.install(app)
     social_routes.install(app)
-    spaces_routes.install(app)
+    # Literal /spaces/v1/categories must be matched before /spaces/v1/{space_uid}.
     space_category_routes.install(app)
+    spaces_routes.install(app)
     space_pulse_routes.install(app)
     moderation_routes.install(app)
     moderation_restriction_routes.install(app)
