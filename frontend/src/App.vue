@@ -262,7 +262,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 			</div>
 		</transition>
 
-		<main class="container app-content" :aria-busy="routePending ? 'true' : 'false'">
+		<div class="container app-content" :aria-busy="routePending ? 'true' : 'false'">
 			<RouterView v-slot="{ Component, route: routedView }">
 				<Transition name="ui-route">
 					<div :key="spaceContextUid ? `space:${spaceContextUid}` : routedView.fullPath" class="route-view-frame">
@@ -270,7 +270,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 					</div>
 				</Transition>
 			</RouterView>
-		</main>
+		</div>
 	</div>
 </template>
 
