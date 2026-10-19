@@ -1,5 +1,6 @@
 <template>
 	<main class="auth-screen" aria-labelledby="login-title">
+		<div class="auth-ambient" aria-hidden="true"></div>
 		<section class="auth-card">
 			<div class="auth-brand">
 				<span class="auth-brand__mark" aria-hidden="true">P</span>
@@ -34,11 +35,12 @@
 					<input
 						v-model="password"
 						class="ui-input"
-						type="password"
+						:type="showPassword ? 'text' : 'password'"
 						autocomplete="current-password"
 						placeholder="Ваш пароль"
 						required
 					/>
+					<button class="password-toggle" type="button" :aria-pressed="showPassword" :aria-label="showPassword ? 'Скрыть ввод' : 'Показать ввод'" @click="showPassword = !showPassword">{{ showPassword ? 'Скрыть' : 'Показать' }}</button>
 				</label>
 
 				<button class="ui-button ui-button--primary ui-button--block" type="submit" :disabled="isSubmitting" :aria-busy="isSubmitting ? 'true' : 'false'">
@@ -71,6 +73,7 @@ const store = useStore();
 
 const identifier = ref('');
 const password = ref('');
+const showPassword = ref(false);
 const errorMessage = ref('');
 const isSubmitting = ref(false);
 
@@ -143,4 +146,43 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
 	.auth-screen { place-items: start stretch; padding: var(--ui-space-3); }
 	.auth-card { border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow-sm); }
 }
+
+/* Design reference 2026-10-18: mobile-first auth, no dead controls. */
+.auth-screen {
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - 64px);
+  background: radial-gradient(ellipse at 12% 12%, var(--ui-primary-soft), transparent 48%),
+              radial-gradient(ellipse at 90% 85%, color-mix(in srgb, var(--ui-brand-cyan, #12bcd5) 13%, transparent), transparent 42%);
+}
+.auth-card {
+  position: relative;
+  width: min(100%, 34rem);
+  padding: clamp(1.25rem, 3.8vw, 2.5rem);
+  border-radius: 24px;
+  box-shadow: 0 16px 55px rgba(42, 36, 118, .12), 0 2px 10px rgba(42, 36, 118, .04);
+}
+.auth-brand__mark {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 18px;
+  background: var(--ui-brand-gradient);
+  box-shadow: 0 8px 22px rgba(99, 71, 245, .22);
+}
+.ui-input, .handle-input { min-height: 3rem; border-radius: 12px; }
+.ui-button--primary { min-height: 3rem; border-radius: 12px; background: var(--ui-brand-gradient); }
+.ui-button--primary:disabled { background: var(--ui-surface-muted); color: var(--ui-text-muted); }
+.password-toggle {
+  align-self: end; justify-self: start; border: none; padding: .3rem 0;
+  background: none; font: inherit; font-size: var(--ui-text-sm);
+  color: var(--ui-primary); cursor: pointer;
+}
+@media (max-width: 560px) {
+  .auth-screen { padding: 12px; place-items: center stretch; }
+  .auth-card { border-radius: 20px; box-shadow: var(--ui-shadow-sm); padding: 20px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-card, .ui-button { animation: none !important; transition-duration: .01ms !important; }
+}
+
 </style>
