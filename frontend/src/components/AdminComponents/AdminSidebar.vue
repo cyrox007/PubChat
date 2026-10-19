@@ -23,6 +23,10 @@
 				<i class="fas fa-shield-halved" aria-hidden="true"></i>
 				<span>Trust & Safety</span>
 			</router-link>
+			<router-link :to="{ name: 'AdminSpaceCategories' }" class="sidebar-link" active-class="active" @click="$emit('navigate')">
+				<i class="fas fa-tags" aria-hidden="true"></i>
+				<span>Категории пространств</span>
+			</router-link>
 			<router-link :to="{ name: 'AdminOperations' }" class="sidebar-link" active-class="active" @click="$emit('navigate')">
 				<i class="fas fa-chart-line" aria-hidden="true"></i>
 				<span>Операции</span>
