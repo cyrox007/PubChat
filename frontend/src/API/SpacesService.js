@@ -23,6 +23,10 @@ export default class SpacesService {
 		return spaceRequest($api.get('/spaces/v1', { params }));
 	}
 
+	static categories() {
+		return $api.get('/spaces/v1/categories');
+	}
+
 	static get(spaceUid) {
 		return spaceRequest($api.get(`/spaces/v1/${spaceUid}`));
 	}
