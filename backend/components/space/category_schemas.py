@@ -1,4 +1,5 @@
 """Independent taxonomy contracts. Category slugs are stable public identifiers."""
+import re
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,6 +10,9 @@ def normalize_category_slugs(values: list[str]) -> list[str]:
     normalized = list(dict.fromkeys(values))
     if len(normalized) > 3:
         raise ValueError("A Space may have at most three categories")
+    if any(not isinstance(slug, str) or len(slug) > 40 or
+           not re.fullmatch(CATEGORY_SLUG_PATTERN, slug) for slug in normalized):
+        raise ValueError("Unknown category slug format")
     return normalized
 
 class CategoryCreate(BaseModel):
