@@ -65,6 +65,13 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('.persona-trigger')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Найдите место, куда хочется вернуться' })).toBeVisible();
+  // Browser/PWA status bar must follow the current approved light/dark tokens.
+  const themeMeta = page.locator('meta[name="theme-color"]');
+  await expect(themeMeta).toHaveAttribute('content', '#F7F8FE');
+  await page.getByRole('button', { name: 'Включить тёмную тему' }).click();
+  await expect(themeMeta).toHaveAttribute('content', '#0F1426');
+  await page.getByRole('button', { name: 'Включить светлую тему' }).click();
+  await expect(themeMeta).toHaveAttribute('content', '#F7F8FE');
   await expect(page.locator('main')).toHaveCount(1);
   const filtersButton = page.getByRole('button', { name: /Фильтры/ });
   await filtersButton.click();
