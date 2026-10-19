@@ -19,7 +19,7 @@
 | Private Multi-Persona: создать, выбрать | Сервер/Web [#108](https://github.com/cyrox007/PubChat/pull/108) | Слито [#35](https://github.com/cyrox007/PubChat-Android/pull/35) | Слито [#3](https://github.com/cyrox007/PubChat-iOS/pull/3) | Публичная адресация, attribution, cross-Persona privacy и device QA **не готовы** |
 | Подписки, друзья, блокировки | API + Web | Код, friendship hub [#36](https://github.com/cyrox007/PubChat-Android/pull/36) | Код, friendship hub [#4](https://github.com/cyrox007/PubChat-iOS/pull/4) | 401/403/409, block/revocation, реальное взаимодействие устройств |
 | People discovery / кратковременная availability | Поиск, intent, server TTL | Код/UI | Код/UI | Одинаковое поведение ошибок, пагинация и device QA |
-| Согласие на новые DM: четыре политики | `/identity/v2/privacy`, enforcement | [PR #53](https://github.com/cyrox007/PubChat-Android/pull/53): код в PR, **не merged на срез** | [PR #16](https://github.com/cyrox007/PubChat-iOS/pull/16) слит, simulator CI green | Android CI/merge, device QA обоих клиентов, повторное создание DM после revoke/block |
+| Согласие на новые DM: четыре политики | `/identity/v2/privacy`, enforcement | **Слито [PR #53](https://github.com/cyrox007/PubChat-Android/pull/53), `7160c5d`**, обе Android CI-конфигурации green | [PR #16](https://github.com/cyrox007/PubChat-iOS/pull/16) слит, simulator CI green | Device QA обоих клиентов, cross-client проверка создания DM после revoke/block и 401/403/409 |
 | Каталог Spaces, membership, room/realtime | Код | Код | Каталог; участие/realtime не завершены | Native cross-client round-trip |
 | **Создать Space** (тип, доступ, категории, join policy, лимит, теги) | Реальный API `POST /spaces/v1` | **Слито [PR #51](https://github.com/cyrox007/PubChat-Android/pull/51), `05653df`** | UI/API отсутствует | На Android нужен physical QA; следующий перенос этого сценария на iOS |
 | Space invitations: увидеть, принять/отклонить, войти | Web + API | Нет завершённого inbox flow | Нет завершённого flow | **Следующий Android функциональный срез**; privacy/expired/revoked invites |
@@ -38,7 +38,7 @@
 1. **P0: приглашения в Spaces на Android** — полноценный inbox, получение, принять/отклонить, открыть Space только после подтверждения сервера; blocked/private/expired/invite-only случаи; тесты и device QA. Это следующий *функциональный* срез, а не повтор создания Space.
 2. **P0 security: Messenger E2EE на Android**, затем iOS: проверить поведение сервера при required E2EE, нативные device keys/verification/revocation, гарантированный fail-closed send и отсутствие downgrade до plaintext. Нельзя выдавать базовую отправку DM за защищённый Messenger.
 3. **P0 safety: нативный Safety Center** для Android/iOS — server-mediated reports/restrictions/appeals, приватные проекции, разрешения и запрет утечек.
-4. **0.7 незакрыто:** DM consent на Android [#53](https://github.com/cyrox007/PubChat-Android/pull/53) до CI/merge, cross-client consent/block/revocation, публичный Multi-Persona contract, реальные устройства.
+4. **0.7 незакрыто:** DM consent **уже слит на Android/iOS** ([Android #53](https://github.com/cyrox007/PubChat-Android/pull/53), [iOS #16](https://github.com/cyrox007/PubChat-iOS/pull/16)); остаются cross-client consent/block/revocation, публичный Multi-Persona contract, реальные устройства.
 5. **0.8/0.9:** полноценные Activities, offline/reconnect, notification preferences/delivery, устройства/сессии, репутация и product experience. Эти направления не закрываются одним набором экранов.
 
 ## Обязательное правило для каждого следующего PR
