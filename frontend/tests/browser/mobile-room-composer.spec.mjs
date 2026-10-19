@@ -44,8 +44,9 @@ test('mobile Space composer gets full width, 44px controls and independent prese
     const controls = await page.locator('.composer__bar .icon-btn').all();
     for (const control of controls) {
       const box = await control.boundingBox();
-      expect(box.width).toBe(44);
-      expect(box.height).toBe(44);
+      // Browser layout uses subpixel floats (Firefox: 44.000015px).
+      expect(box.width).toBeCloseTo(44, 2);
+      expect(box.height).toBeCloseTo(44, 2);
     }
     const last = await controls.at(-1).boundingBox();
     expect(last.x + last.width).toBeLessThanOrEqual(width + 1);
