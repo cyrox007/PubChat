@@ -65,6 +65,15 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('.persona-trigger')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Найдите место, куда хочется вернуться' })).toBeVisible();
+  await expect(page.locator('main')).toHaveCount(1);
+  const filtersButton = page.getByRole('button', { name: /Фильтры/ });
+  await filtersButton.click();
+  const filterDialog = page.getByRole('dialog', { name: 'Фильтры пространств' });
+  await expect(filterDialog).toBeVisible();
+  await filterDialog.getByRole('button', { name: 'Игры' }).click();
+  await filterDialog.getByRole('button', { name: 'Показать пространства' }).click();
+  await expect(filterDialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Сбросить', exact: true }).click();
   await assertNoPersistedBearer(page);
 
   const refreshCookie = (await context.cookies()).find((item) => item.name === 'refresh_token');
@@ -96,6 +105,7 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/spaces\/[^/]+$/);
   await expect(page.getByRole('heading', { name: spaceName })).toBeVisible();
   await expect(page.locator('.route-view-frame')).toHaveCount(1);
+  await expect(page.locator('main')).toHaveCount(1);
 
   if (testInfo.project.name === 'mobile-chromium') {
     const viewport = await page.evaluate(() => {
@@ -113,6 +123,10 @@ test('registration, refresh rotation, logout and login survive real browser cook
     expect(viewport.roomBottom).not.toBeNull();
     expect(viewport.navTop).not.toBeNull();
     expect(viewport.roomBottom).toBeLessThanOrEqual(viewport.navTop + 2);
+    expect(viewport.roomBottom).toBeGreaterThanOrEqual(viewport.navTop - 2);
+    await expect(page.locator('.conversation-area > .live-presence')).toBeHidden();
+    const input = await page.getByPlaceholder('Сообщение', { exact: true }).boundingBox();
+    expect(input?.width).toBeGreaterThan(105);
   }
 
   // Room management stays inside the same mounted conversation, including mobile.

@@ -23,7 +23,7 @@
 				</button>
 			</form>
 
-			<div class="purpose-filter" role="list" aria-label="Режим и формат пространства">
+			<div class="purpose-filter" role="group" aria-label="Режим и формат пространства">
 				<button
 					type="button"
 					class="filter-chip filter-chip--live"
@@ -36,7 +36,7 @@
 				</button>
 				<span class="filter-separator" aria-hidden="true"></span>
 				<button
-					v-for="item in purposeOptions"
+					v-for="item in purposeOptions.slice(0, 3)"
 					:key="item.value || 'all'"
 					type="button"
 					class="filter-chip"
@@ -45,11 +45,48 @@
 				>
 					{{ item.label }}
 				</button>
+				<button type="button" class="filter-chip filter-chip--more" :aria-expanded="filtersOpen" aria-controls="discovery-filters-panel" @click="openFilters">
+					<i class="fas fa-sliders" aria-hidden="true"></i> Фильтры<span v-if="purpose || tagFilter" class="filter-active-indicator" aria-hidden="true"></span>
+				</button>
 				<button v-if="hasActiveFilters" type="button" class="filter-chip filter-chip--reset" @click="resetFilters">
 					<i class="fas fa-rotate-left" aria-hidden="true"></i> Сбросить
 				</button>
 			</div>
 		</section>
+
+		<div v-if="filtersOpen" class="filters-backdrop" @click.self="filtersOpen = false">
+			<section id="discovery-filters-panel" class="filters-dialog" role="dialog" aria-modal="true" aria-labelledby="discovery-filters-title" @keydown.esc="filtersOpen = false">
+				<header class="filters-dialog__heading">
+					<h2 id="discovery-filters-title">Фильтры пространств</h2>
+					<button type="button" class="filters-close" aria-label="Закрыть фильтры" @click="filtersOpen = false"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+				</header>
+				<fieldset class="filters-dialog__group">
+					<legend>Формат общения</legend>
+					<div class="filters-dialog__chips">
+						<button v-for="item in purposeOptions" :key="item.value || 'all'" type="button" class="filter-chip"
+							:class="{ active: filterDraftPurpose === item.value }" :aria-pressed="filterDraftPurpose === item.value"
+							@click="filterDraftPurpose = item.value">{{ item.label }}</button>
+					</div>
+				</fieldset>
+				<fieldset class="filters-dialog__group">
+					<legend>Темы и категории</legend>
+					<p class="filters-dialog__note">Фильтрация по тегам, которые указаны у реальных пространств.</p>
+					<div v-if="availableTopicTags.length" class="filters-dialog__chips">
+						<button v-for="tag in availableTopicTags" :key="tag" type="button" class="filter-chip"
+							:class="{ active: filterDraftTag === tag }" :aria-pressed="filterDraftTag === tag" @click="filterDraftTag = filterDraftTag === tag ? '' : tag">
+							#{{ tag }}
+						</button>
+					</div>
+					<label class="filters-dialog__tag">Найти по тегу
+						<input v-model.trim="filterDraftTag" type="text" maxlength="40" placeholder="Например: дизайн" />
+					</label>
+				</fieldset>
+				<footer class="filters-dialog__actions">
+					<button type="button" class="ui-button ui-button--ghost" @click="clearFilterDraft">Сбросить</button>
+					<button type="button" class="ui-button" @click="applyFilters">Показать пространства</button>
+				</footer>
+			</section>
+		</div>
 
 		<Transition name="ui-state" mode="out-in">
 		<section v-if="loading" key="loading" class="discovery-state" role="status">
@@ -171,6 +208,13 @@ const liveMode = ref(false);
 const livePresenceAvailable = ref(true);
 const createOpen = ref(false);
 const joiningUid = ref(null);
+const filtersOpen = ref(false);
+const filterDraftPurpose = ref(null);
+const filterDraftTag = ref('');
+const availableTopicTags = computed(() => [...new Set(
+	spaces.value.flatMap((space) => Array.isArray(space.tags) ? space.tags : [])
+		.map((tag) => String(tag || '').trim()).filter(Boolean)
+)].sort((a, b) => a.localeCompare(b, 'ru')).slice(0, 16));
 const hasActiveFilters = computed(() => Boolean(liveMode.value || purpose.value || tagFilter.value || searchQuery.value));
 
 const purposeOptions = [
@@ -181,6 +225,23 @@ const purposeOptions = [
 	{ value: 'local', label: 'Рядом' },
 	{ value: 'community', label: 'Сообщества' },
 ];
+
+const openFilters = () => {
+	filterDraftPurpose.value = purpose.value;
+	filterDraftTag.value = tagFilter.value || '';
+	filtersOpen.value = true;
+};
+const clearFilterDraft = () => {
+	filterDraftPurpose.value = null;
+	filterDraftTag.value = '';
+};
+const applyFilters = async () => {
+	liveMode.value = false;
+	purpose.value = filterDraftPurpose.value;
+	tagFilter.value = filterDraftTag.value.trim() || null;
+	filtersOpen.value = false;
+	await loadSpaces();
+};
 
 const defaultAppearance = (spaceUid) => ({
 	space_uid: spaceUid,
@@ -341,8 +402,28 @@ onMounted(loadSpaces);
 .search-box { min-height: 3.2rem; display: flex; align-items: center; gap: var(--ui-space-3); padding: 0 var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); color: var(--ui-text-subtle); }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ui-text); font: inherit; }
 .search-box button { border: 0; background: transparent; color: var(--ui-text-subtle); cursor: pointer; }
-.purpose-filter { display: flex; align-items: center; gap: var(--ui-space-2); overflow-x: auto; padding-bottom: .15rem; scrollbar-width: none; }
-.filter-chip { flex: 0 0 auto; min-height: 2.3rem; display: inline-flex; align-items: center; gap: .45rem; padding: 0 var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); color: var(--ui-text-muted); font: inherit; font-size: var(--ui-text-sm); font-weight: 700; cursor: pointer; }
+.purpose-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; overflow-x: visible; padding-bottom: .15rem; }
+.filter-chip--more { color: var(--ui-primary); border-color: var(--ui-primary); }
+.filter-active-indicator { width: .45rem; height: .45rem; background: var(--ui-primary); border-radius: 50%; }
+.filters-backdrop { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1800; padding: 1rem; background: rgba(15, 20, 44, .54); }
+.filters-dialog { width: min(100%, 31rem); max-height: min(85dvh, 760px); overflow-y: auto; display: grid; gap: 1.2rem; padding: 1.25rem; border-radius: 24px; background: var(--ui-surface-raised); color: var(--ui-text); box-shadow: var(--ui-shadow-lg); }
+.filters-dialog__heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.filters-dialog__heading h2 { margin: 0; font-size: var(--ui-text-xl); }
+.filters-close { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border: 0; border-radius: 12px; background: var(--ui-surface-muted); color: var(--ui-text); cursor: pointer; }
+.filters-dialog__group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.filters-dialog__group legend { margin-bottom: .65rem; font-weight: 750; }
+.filters-dialog__chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.filters-dialog__note { margin: 0 0 .7rem; color: var(--ui-text-muted); font-size: .85rem; }
+.filters-dialog__tag { display: grid; gap: .45rem; margin-top: 1rem; font-size: .875rem; font-weight: 650; }
+.filters-dialog__tag input { min-width: 0; width: 100%; min-height: 44px; padding: .6rem .8rem; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface); color: var(--ui-text); }
+.filters-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .65rem; }
+.filters-dialog__actions .ui-button { min-height: 44px; white-space: normal; text-align: center; }
+@media (max-width: 560px) {
+  .filters-backdrop { align-items: end; padding: 0; }
+  .filters-dialog { width: 100%; max-height: 88dvh; border-radius: 24px 24px 0 0; padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .purpose-filter { gap: .35rem; }
+}
+.filter-chip { flex: 0 0 auto; max-width: 100%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; padding: .45rem .75rem; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-surface); color: var(--ui-text-muted); font: inherit; font-size: .82rem; line-height: 1.2; font-weight: 700; white-space: normal; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .filter-chip.active { border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border)); background: var(--ui-primary-soft); color: var(--ui-primary); }
 .filter-chip--live.active { border-color: color-mix(in srgb, var(--ui-success) 42%, var(--ui-border)); background: var(--ui-success-soft); color: var(--ui-success); }
 .filter-chip--reset { margin-left: auto; color: var(--ui-text-subtle); }

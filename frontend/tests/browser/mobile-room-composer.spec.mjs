@@ -35,13 +35,13 @@ test('mobile Space composer gets full width, 44px controls and independent prese
     `);
     await page.addStyleTag({ content: composerCSS + '\n' + roomCSS });
     const input = await page.getByRole('textbox', { name: 'Сообщение' }).boundingBox();
-    const status = await page.locator('.live-presence').boundingBox();
     const bar = await page.locator('.composer__bar').boundingBox();
     expect(input).not.toBeNull();
-    expect(status).not.toBeNull();
     expect(bar).not.toBeNull();
     expect(input.width, `Input squeezed at ${width}px`).toBeGreaterThan(105);
-    expect(status.y + status.height, 'Presence must be above composer').toBeLessThanOrEqual(bar.y + 1);
+    // The duplicated "Root · You are here" strip is no longer rendered on
+    // mobile: the space header already owns online presence.
+    await expect(page.locator('.live-presence')).toBeHidden();
     const controls = await page.locator('.composer__bar .icon-btn').all();
     for (const control of controls) {
       const box = await control.boundingBox();
