@@ -61,6 +61,7 @@ from components.support.model import (
     SpaceSupportSettings,
     SupportLedgerEntry,
 )
+from components.space.category_model import SpaceCategory, SpaceCategoryAssignment, SpaceCategoryAudit
 from components.space.model import (
     SpaceEvent,
     SpaceHistoryEntry,
