@@ -65,6 +65,13 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('.persona-trigger')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Найдите место, куда хочется вернуться' })).toBeVisible();
+  // Browser/PWA status bar must follow the current approved light/dark tokens.
+  const themeMeta = page.locator('meta[name="theme-color"]');
+  await expect(themeMeta).toHaveAttribute('content', '#F7F8FE');
+  await page.getByRole('button', { name: 'Включить тёмную тему' }).click();
+  await expect(themeMeta).toHaveAttribute('content', '#0F1426');
+  await page.getByRole('button', { name: 'Включить светлую тему' }).click();
+  await expect(themeMeta).toHaveAttribute('content', '#F7F8FE');
   await expect(page.locator('main')).toHaveCount(1);
   const filtersButton = page.getByRole('button', { name: /Фильтры/ });
   await filtersButton.click();
@@ -128,6 +135,28 @@ test('registration, refresh rotation, logout and login survive real browser cook
     expect(viewport.navTop).not.toBeNull();
     expect(viewport.roomBottom).toBeLessThanOrEqual(viewport.navTop + 2);
     expect(viewport.roomBottom).toBeGreaterThanOrEqual(viewport.navTop - 2);
+    // The global landing-page bg.webp must never appear in narrow Space chats.
+    // This exposed a striped 10–20px gap above bottom nav on real Android Chrome.
+    const surfaces = await page.evaluate(() => {
+      const shell = document.querySelector('.app-shell');
+      const nav = document.querySelector('.mobile-nav');
+      const composer = document.querySelector('.conversation-area > .composer');
+      const styles = (element) => ({
+        image: getComputedStyle(element).backgroundImage,
+        color: getComputedStyle(element).backgroundColor,
+      });
+      return {
+        body: styles(document.body),
+        shell: styles(shell),
+        nav: styles(nav),
+        composer: styles(composer),
+      };
+    });
+    for (const [surfaceName, style] of Object.entries(surfaces)) {
+      expect(style.image, `${surfaceName} should have no illustration`).toBe('none');
+      expect(style.color, `${surfaceName} should have solid surface color`).not.toBe('rgba(0, 0, 0, 0)');
+    }
+    await expect(page.locator('.mobile-nav a')).toHaveCount(5);
     await expect(page.locator('.conversation-area > .live-presence')).toBeHidden();
     const input = await page.getByPlaceholder('Сообщение', { exact: true }).boundingBox();
     expect(input?.width).toBeGreaterThan(105);

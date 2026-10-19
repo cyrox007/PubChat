@@ -308,3 +308,44 @@
     min-width: 0;
   }
 }
+
+/* Full-screen conversations are app surfaces, not landing-page canvas.
+   body uses bg.webp/bg-dark.webp globally: on short browser viewports any
+   uncovered pixels appeared as a purple/blue stripe under the composer.
+   Keep the discovery/onboarding illustration on those pages ONLY. */
+@media (max-width: 720px) {
+  html:has(.app-shell .space-shell),
+  body:has(.app-shell .space-shell) {
+    background-image: none !important;
+    background-color: var(--ui-bg);
+    background-attachment: scroll;
+  }
+
+  #app:has(.app-shell .space-shell),
+  .app-shell:has(.space-shell),
+  .app-shell:has(.space-shell) > .app-content,
+  .app-shell:has(.space-shell) > .app-content > .route-view-frame {
+    background-color: var(--ui-bg);
+    background-image: none;
+  }
+
+  .app-shell:has(.space-shell) .space-main,
+  .app-shell:has(.space-shell) .conversation-area,
+  .app-shell:has(.space-shell) .message-stream {
+    background-color: var(--ui-bg);
+    background-image: none;
+  }
+
+  .app-shell:has(.space-shell) .conversation-area > .composer,
+  .app-shell:has(.space-shell) .mobile-nav {
+    background: var(--ui-surface);
+    background-image: none;
+  }
+
+  /* The bottom navigation is opaque so neither the canvas illustration nor
+     message content can bleed through on scroll or browser-bar resize. */
+  .app-shell:has(.space-shell) .mobile-nav {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
