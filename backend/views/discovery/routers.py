@@ -81,6 +81,7 @@ def install(app: FastAPI) -> None:
         q: Optional[str] = Query(default=None, max_length=80),
         purpose: Optional[SpacePurpose] = None,
         tag: Optional[str] = Query(default=None, max_length=40),
+        category: Optional[str] = Query(default=None, max_length=40, pattern=r"^[a-z][a-z0-9-]*$"),
         live_now: bool = Query(default=False),
         limit: int = Query(default=30, ge=1, le=50),
         offset: int = Query(default=0, ge=0, le=150),
@@ -95,6 +96,7 @@ def install(app: FastAPI) -> None:
             query=q,
             purpose=purpose,
             tag=tag,
+            category=category,
             limit=pool_limit,
             offset=pool_offset,
         )

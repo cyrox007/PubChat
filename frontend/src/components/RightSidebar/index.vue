@@ -29,10 +29,29 @@
 		<section v-if="activeTab === 'info'" class="panel-content">
 			<div class="space-summary">
 				<p>{{ roomInfo.description || 'У этого пространства пока нет описания.' }}</p>
+				<div v-if="roomInfo.category_slugs?.length" class="tag-list" aria-label="Категории пространства">
+					<span v-for="slug in roomInfo.category_slugs" :key="slug" class="ui-chip">{{ categoryName(slug) }}</span>
+				</div>
 				<div v-if="tags.length" class="tag-list">
 					<span v-for="tag in tags" :key="tag" class="ui-chip">{{ tag }}</span>
 				</div>
 			</div>
+			<section v-if="isOwner" class="category-editor">
+				<button type="button" class="ui-button ui-button--ghost" @click="categoryEditing = !categoryEditing">
+					{{ categoryEditing ? 'Закрыть категории' : 'Изменить категории' }}
+				</button>
+				<div v-if="categoryEditing" class="category-editor__form">
+					<p v-if="categoryError" role="alert">{{ categoryError }}</p>
+					<p v-if="!availableCategories.length && !categoryError">Категории пока не доступны.</p>
+					<label v-for="item in availableCategories" :key="item.slug" class="category-editor__option">
+						<input type="checkbox" :checked="selectedCategories.includes(item.slug)"
+							:disabled="!selectedCategories.includes(item.slug) && selectedCategories.length >= 3"
+							@change="toggleCategory(item.slug)" /> {{ item.name }}
+					</label>
+					<button type="button" class="ui-button" :disabled="categorySaving || !!categoryError"
+						@click="saveCategories">{{ categorySaving ? 'Сохраняем…' : 'Сохранить категории' }}</button>
+				</div>
+			</section>
 
 			<dl class="space-facts">
 				<div v-if="owner?.uid">
@@ -201,6 +220,45 @@ const owner = computed(() => props.roomInfo.owner || (props.roomInfo.owner_uid ?
 const isOwner = computed(() => props.roomInfo.owner_uid === currentUserUid.value || props.roomInfo.viewer_membership?.role === 'owner');
 const isCurrentUserModerator = computed(() => props.roomInfo.viewer_membership?.status === 'active' && props.roomInfo.viewer_membership?.role === 'moderator');
 const canManage = computed(() => Boolean(props.roomInfo.can_manage || isOwner.value || isCurrentUserModerator.value));
+const availableCategories = ref([]);
+const selectedCategories = ref([]);
+const categoryEditing = ref(false);
+const categorySaving = ref(false);
+const categoryError = ref('');
+const categoryName = (slug) => availableCategories.value.find((item) => item.slug === slug)?.name || slug;
+const toggleCategory = (slug) => {
+	if (selectedCategories.value.includes(slug)) {
+		selectedCategories.value = selectedCategories.value.filter((item) => item !== slug);
+	} else if (selectedCategories.value.length < 3) {
+		selectedCategories.value = [...selectedCategories.value, slug];
+	}
+};
+const saveCategories = async () => {
+	if (categorySaving.value || !isOwner.value) return;
+	categorySaving.value = true;
+	categoryError.value = '';
+	try {
+		await SpacesService.update(props.roomInfo.uid, { category_slugs: selectedCategories.value });
+		categoryEditing.value = false;
+		emit('membership-changed');
+	} catch (error) {
+		categoryError.value = error.response?.status === 422
+			? 'Одна из выбранных категорий больше не активна.' : 'Не удалось сохранить категории.';
+	} finally { categorySaving.value = false; }
+};
+watch(() => props.roomInfo.uid, async (uid) => {
+	categoryEditing.value = false;
+	selectedCategories.value = props.roomInfo.category_slugs || [];
+	if (!uid) return;
+	try {
+		const response = await SpacesService.categories();
+		availableCategories.value = response.data.categories || [];
+		categoryError.value = '';
+	} catch { categoryError.value = 'Категории временно недоступны.'; }
+}, { immediate: true });
+watch(() => props.roomInfo.category_slugs, (value) => {
+	if (!categoryEditing.value) selectedCategories.value = value || [];
+});
 const tags = computed(() => Array.isArray(props.roomInfo.tags)
 	? props.roomInfo.tags
 	: String(props.roomInfo.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean));
@@ -385,4 +443,13 @@ watch(
 .load-more { width: calc(100% - var(--ui-space-2)); min-height: 2.5rem; margin: var(--ui-space-3) var(--ui-space-1) 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text-muted); cursor: pointer; }
 @media (max-width: 1100px) { .space-panel { position: absolute; top: 0; right: 0; z-index: 40; width: min(21rem, 92vw); min-width: 0; transform: translateX(105%); box-shadow: var(--ui-shadow-lg); transition: transform var(--ui-motion-normal) var(--ui-ease); } .space-panel.active { transform: translateX(0); } }
 @media (max-width: 1100px) { .space-panel--workspace { width: min(44rem, 100%); z-index: 45; } }
+</style>
+
+<style scoped>
+.category-editor { margin: 1rem 0; display: grid; gap: .6rem; }
+.category-editor__form { border: 1px solid var(--ui-border); border-radius: 14px; padding: .8rem; display: grid; gap: .45rem; background: var(--ui-surface-soft); }
+.category-editor__form p { color: var(--ui-danger); font-size: .8rem; }
+.category-editor__option { display: flex; align-items: center; gap: .5rem; min-height: 44px; padding: .25rem .45rem; background: var(--ui-surface); border-radius: 12px; }
+.category-editor__option input { width: 18px; height: 18px; accent-color: var(--ui-primary); }
+.category-editor .ui-button { min-height: 44px; white-space: normal; }
 </style>

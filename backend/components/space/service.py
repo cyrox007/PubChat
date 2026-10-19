@@ -12,6 +12,8 @@ from components.reputation.service import ensure_space_creation_privilege
 from components.room.model import Room, RoomBan, RoomMember
 from components.space.capacity import assert_space_has_capacity, lock_space_admission_policy
 from components.space.model import SpaceMembership, SpaceSettings, SpaceTag
+from components.space.category_model import SpaceCategory, SpaceCategoryAssignment
+from components.space.category_service import replace_space_categories
 from components.space.schemas import SpaceCreateRequest, SpaceUpdateRequest
 
 
@@ -181,6 +183,15 @@ async def build_space_projections(
     for tag in tags_result.scalars().all():
         tags_by_room[tag.room_uid].append(tag.label)
 
+    category_result = await db.execute(
+        select(SpaceCategoryAssignment.room_uid, SpaceCategoryAssignment.category_slug)
+        .where(SpaceCategoryAssignment.room_uid.in_(room_uids))
+        .order_by(SpaceCategoryAssignment.category_slug)
+    )
+    categories_by_room: dict[UUID, list[str]] = defaultdict(list)
+    for room_uid, slug in category_result.all():
+        categories_by_room[room_uid].append(slug)
+
     memberships_result = await db.execute(
         select(SpaceMembership).where(
             SpaceMembership.room_uid.in_(room_uids),
@@ -246,6 +257,7 @@ async def build_space_projections(
                 "region": room.region,
                 "country": room.country,
                 "tags": tags,
+                "category_slugs": categories_by_room.get(room.uid, []),
                 "owner_uid": str(owner_account_uid) if owner_account_uid else None,
                 "owner": {
                     "uid": str(owner_account_uid),
@@ -277,6 +289,7 @@ async def list_spaces(
     query: str | None = None,
     purpose: str | None = None,
     tag: str | None = None,
+    category: str | None = None,
     limit: int = 30,
     offset: int = 0,
     candidate_uids: list[UUID] | None = None,
@@ -319,6 +332,18 @@ async def list_spaces(
 
     if purpose:
         stmt = stmt.where(func.coalesce(SpaceSettings.purpose, DEFAULT_PURPOSE) == purpose)
+
+    if category:
+        category_exists = (
+            select(SpaceCategoryAssignment.category_slug)
+            .join(SpaceCategory, SpaceCategory.slug == SpaceCategoryAssignment.category_slug)
+            .where(
+                SpaceCategoryAssignment.room_uid == Room.uid,
+                SpaceCategoryAssignment.category_slug == category,
+                SpaceCategory.is_active.is_(True),
+            ).exists()
+        )
+        stmt = stmt.where(category_exists)
 
     if tag:
         normalized_tag = _slugify_tag(tag)
@@ -412,6 +437,7 @@ async def create_space(
         )
     )
     await _replace_tags(db, room.uid, payload.tags)
+    await replace_space_categories(db, room.uid, payload.category_slugs)
     await _sync_legacy_membership(db, room.uid, account, role="member")
 
     await db.commit()
@@ -482,6 +508,9 @@ async def update_space(
         tags = changes["tags"] or []
         room.tags = ",".join(tags)
         await _replace_tags(db, room.uid, tags)
+
+    if "category_slugs" in changes:
+        await replace_space_categories(db, room.uid, changes["category_slugs"] or [])
 
     settings.updated_at = datetime.utcnow()
     await db.commit()

@@ -69,7 +69,23 @@
 					</div>
 				</fieldset>
 				<fieldset class="filters-dialog__group">
-					<legend>Темы и категории</legend>
+					<legend>Категории</legend>
+					<p v-if="categoryError" class="filters-dialog__note" role="status">Категории недоступны.
+						<button type="button" class="filter-chip" @click="loadCategories">Повторить</button>
+					</p>
+					<p v-else-if="!categories.length" class="filters-dialog__note">Категорий пока нет.</p>
+					<div v-else class="filters-dialog__chips">
+						<button type="button" class="filter-chip" :class="{ active: filterDraftCategory === null }"
+							:aria-pressed="filterDraftCategory === null" @click="filterDraftCategory = null">Все категории</button>
+						<button v-for="item in categories" :key="item.slug" type="button" class="filter-chip"
+							:class="{ active: filterDraftCategory === item.slug }" :aria-pressed="filterDraftCategory === item.slug"
+							@click="filterDraftCategory = item.slug">
+							<i :class="`fas fa-${item.icon}`" aria-hidden="true"></i> {{ item.name }}
+						</button>
+					</div>
+				</fieldset>
+				<fieldset class="filters-dialog__group">
+					<legend>Свободные теги</legend>
 					<p class="filters-dialog__note">Фильтрация по тегам, которые указаны у реальных пространств.</p>
 					<div v-if="availableTopicTags.length" class="filters-dialog__chips">
 						<button v-for="tag in availableTopicTags" :key="tag" type="button" class="filter-chip"
@@ -118,6 +134,9 @@
 					</div>
 					<p v-if="space.appearance?.welcome_line" class="welcome-line">{{ space.appearance.welcome_line }}</p>
 					<p>{{ space.description || 'Создатель пока не добавил описание — атмосфера формируется людьми.' }}</p>
+					<div v-if="space.category_slugs?.length" class="tag-row" aria-label="Категории пространства">
+						<span v-for="slug in space.category_slugs" :key="slug" class="ui-chip">{{ categoryName(slug) }}</span>
+					</div>
 					<div v-if="space.tags?.length" class="tag-row">
 						<button v-for="tag in space.tags.slice(0, 4)" :key="tag" type="button" class="ui-chip" @click="filterByTag(tag)">#{{ tag }}</button>
 					</div>
@@ -204,6 +223,18 @@ const errorMessage = ref('');
 const searchQuery = ref('');
 const purpose = ref(null);
 const tagFilter = ref(null);
+const category = ref(null);
+const categories = ref([]);
+const categoryError = ref(false);
+const filterDraftCategory = ref(null);
+const loadCategories = async () => {
+	categoryError.value = false;
+	try {
+		const response = await SpacesService.categories();
+		categories.value = response.data.categories || [];
+	} catch { categoryError.value = true; }
+};
+const categoryName = (slug) => categories.value.find((item) => item.slug === slug)?.name || slug;
 const liveMode = ref(false);
 const livePresenceAvailable = ref(true);
 const createOpen = ref(false);
@@ -215,7 +246,7 @@ const availableTopicTags = computed(() => [...new Set(
 	spaces.value.flatMap((space) => Array.isArray(space.tags) ? space.tags : [])
 		.map((tag) => String(tag || '').trim()).filter(Boolean)
 )].sort((a, b) => a.localeCompare(b, 'ru')).slice(0, 16));
-const hasActiveFilters = computed(() => Boolean(liveMode.value || purpose.value || tagFilter.value || searchQuery.value));
+const hasActiveFilters = computed(() => Boolean(liveMode.value || purpose.value || tagFilter.value || category.value || searchQuery.value));
 
 const purposeOptions = [
 	{ value: null, label: 'Все' },
@@ -229,16 +260,20 @@ const purposeOptions = [
 const openFilters = () => {
 	filterDraftPurpose.value = purpose.value;
 	filterDraftTag.value = tagFilter.value || '';
+	filterDraftCategory.value = category.value;
+	loadCategories();
 	filtersOpen.value = true;
 };
 const clearFilterDraft = () => {
 	filterDraftPurpose.value = null;
 	filterDraftTag.value = '';
+	filterDraftCategory.value = null;
 };
 const applyFilters = async () => {
 	liveMode.value = false;
 	purpose.value = filterDraftPurpose.value;
 	tagFilter.value = filterDraftTag.value.trim() || null;
+	category.value = filterDraftCategory.value;
 	filtersOpen.value = false;
 	await loadSpaces();
 };
@@ -255,6 +290,7 @@ const discoveryParams = () => ({
 	q: searchQuery.value || undefined,
 	purpose: purpose.value || undefined,
 	tag: tagFilter.value || undefined,
+	category: category.value || undefined,
 	live_now: liveMode.value || undefined,
 	limit: 50,
 });
@@ -309,6 +345,7 @@ const toggleLiveMode = async () => {
 	if (next) {
 		purpose.value = null;
 		tagFilter.value = null;
+		category.value = null;
 	}
 	await loadSpaces();
 };
@@ -338,6 +375,7 @@ const resetFilters = async () => {
 	liveMode.value = false;
 	purpose.value = null;
 	tagFilter.value = null;
+	category.value = null;
 	searchQuery.value = '';
 	await loadSpaces();
 };
@@ -387,7 +425,7 @@ const resolveAvatar = publicAssetUrl;
 const avatarFallback = (value = '?') => String(value || '?').slice(0, 1).toUpperCase();
 const formatUpcoming = (value) => new Intl.DateTimeFormat('ru', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 
-onMounted(loadSpaces);
+onMounted(() => { loadCategories(); loadSpaces(); });
 </script>
 
 <style scoped>

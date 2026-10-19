@@ -2,6 +2,7 @@ import re
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from components.space.category_schemas import normalize_category_slugs
 
 
 SpacePurpose = Literal["community", "conversation", "meet_people", "games", "local"]
@@ -50,6 +51,7 @@ class SpaceCreateRequest(BaseModel):
     region: Optional[str] = Field(default=None, max_length=100)
     country: Optional[str] = Field(default=None, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=8)
+    category_slugs: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator("name")
     @classmethod
@@ -65,6 +67,11 @@ class SpaceCreateRequest(BaseModel):
     @classmethod
     def normalize_tags(cls, tags: list[str]) -> list[str]:
         return _normalize_tag_list(tags)
+
+    @field_validator("category_slugs")
+    @classmethod
+    def validate_category_slugs(cls, values: list[str]) -> list[str]:
+        return normalize_category_slugs(values)
 
     @model_validator(mode="after")
     def validate_visibility_policy(self):
@@ -84,6 +91,7 @@ class SpaceUpdateRequest(BaseModel):
     region: Optional[str] = Field(default=None, max_length=100)
     country: Optional[str] = Field(default=None, max_length=100)
     tags: Optional[list[str]] = Field(default=None, max_length=8)
+    category_slugs: Optional[list[str]] = Field(default=None, max_length=3)
 
     @field_validator("name")
     @classmethod
@@ -103,6 +111,11 @@ class SpaceUpdateRequest(BaseModel):
         if tags is None:
             return None
         return _normalize_tag_list(tags)
+
+    @field_validator("category_slugs")
+    @classmethod
+    def validate_category_slugs(cls, values: Optional[list[str]]) -> Optional[list[str]]:
+        return normalize_category_slugs(values) if values is not None else None
 
 
 class SpaceMembershipRoleUpdateRequest(BaseModel):

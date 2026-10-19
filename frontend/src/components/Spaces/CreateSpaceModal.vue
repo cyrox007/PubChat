@@ -70,6 +70,24 @@
 						<input v-model.trim="form.region" maxlength="100" placeholder="Необязательно" />
 					</label>
 
+					<fieldset class="field field--wide category-choice">
+						<legend>Категории (необязательно, до 3)</legend>
+						<p v-if="categoryError" role="status" class="category-choice__note">
+							Не удалось загрузить категории. <button type="button" @click="loadCategories">Повторить</button>
+						</p>
+						<p v-else-if="!categories.length" class="category-choice__note">
+							{{ categoriesLoading ? 'Загружаем категории…' : 'Доступных категорий пока нет.' }}
+						</p>
+						<div v-else class="category-choice__items">
+							<label v-for="category in categories" :key="category.slug" class="category-choice__item">
+								<input type="checkbox" :checked="selectedCategories.includes(category.slug)"
+									:disabled="!selectedCategories.includes(category.slug) && selectedCategories.length >= 3"
+									@change="toggleCategory(category.slug)" />
+								{{ category.name }}
+							</label>
+						</div>
+					</fieldset>
+
 					<label class="field field--wide">
 						<span>Теги</span>
 						<input v-model="tagsText" maxlength="240" placeholder="кино, музыка, вильнюс" />
@@ -119,6 +137,30 @@ const initialForm = () => ({
 
 const form = reactive(initialForm());
 const tagsText = ref('');
+const categories = ref([]);
+const selectedCategories = ref([]);
+const categoriesLoading = ref(false);
+const categoryError = ref(false);
+const loadCategories = async () => {
+	if (categoriesLoading.value) return;
+	categoriesLoading.value = true;
+	categoryError.value = false;
+	try {
+		const response = await SpacesService.categories();
+		categories.value = response.data.categories || [];
+	} catch {
+		categoryError.value = true;
+	} finally {
+		categoriesLoading.value = false;
+	}
+};
+const toggleCategory = (slug) => {
+	if (selectedCategories.value.includes(slug)) {
+		selectedCategories.value = selectedCategories.value.filter((item) => item !== slug);
+	} else if (selectedCategories.value.length < 3) {
+		selectedCategories.value = [...selectedCategories.value, slug];
+	}
+};
 const submitting = ref(false);
 const errorMessage = ref('');
 
@@ -127,6 +169,7 @@ const canSubmit = computed(() => form.name.trim().length >= 3 && form.member_lim
 const reset = () => {
 	Object.assign(form, initialForm());
 	tagsText.value = '';
+	selectedCategories.value = [];
 	errorMessage.value = '';
 };
 
@@ -154,6 +197,7 @@ const submit = async () => {
 			country: form.country || null,
 			region: form.region || null,
 			tags: parsedTags(),
+			category_slugs: selectedCategories.value,
 		});
 		emit('created', response.data.space);
 		reset();
@@ -161,7 +205,9 @@ const submit = async () => {
 		const type = error.response?.data?.detail?.error_type;
 		errorMessage.value = type === 'invalid_space_policy'
 			? 'Для закрытого пространства выберите вход по заявке или приглашению.'
-			: 'Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.';
+			: type === 'invalid_or_inactive_space_category'
+				? 'Одна из категорий больше недоступна. Обновите список категорий.'
+				: 'Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.';
 	} finally {
 		submitting.value = false;
 	}
@@ -175,6 +221,7 @@ let previousBodyOverflow = '';
 
 watch(() => props.open, (open) => {
 	if (open) {
+		loadCategories();
 		errorMessage.value = '';
 		previousBodyOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
@@ -223,4 +270,14 @@ onBeforeUnmount(() => {
 	.space-modal__header, .space-modal__footer { padding-inline: var(--ui-space-4); }
 	.space-modal__footer { position: sticky; bottom: 0; }
 }
+</style>
+
+<style scoped>
+.category-choice { min-width: 0; margin: 0; padding: .85rem; border: 1px solid var(--ui-border); border-radius: 14px; }
+.category-choice legend { padding: 0 .25rem; font-size: .85rem; font-weight: 750; }
+.category-choice__items { display: flex; flex-wrap: wrap; gap: .5rem; }
+.category-choice__item { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .65rem; min-height: 44px; border-radius: 999px; background: var(--ui-surface-muted); color: var(--ui-text); font-size: .85rem; }
+.category-choice__item input { width: 1rem; height: 1rem; min-height: 0; accent-color: var(--ui-primary); }
+.category-choice__note { color: var(--ui-text-muted); font-size: .8rem; }
+.category-choice__note button { color: var(--ui-primary); text-decoration: underline; }
 </style>

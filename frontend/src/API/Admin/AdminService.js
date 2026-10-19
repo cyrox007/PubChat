@@ -1,6 +1,22 @@
 import $api from '@/API';
 
 export default class AdminService {
+	static spaceCategories() {
+		return $api.get('/admin/space-categories');
+	}
+
+	static createSpaceCategory(payload) {
+		return $api.post('/admin/space-categories', payload);
+	}
+
+	static updateSpaceCategory(slug, payload) {
+		return $api.patch(`/admin/space-categories/${encodeURIComponent(slug)}`, payload);
+	}
+
+	static spaceCategoryAudit() {
+		return $api.get('/admin/space-categories/audit');
+	}
+
 	static async getDashboardStats() {
 		return $api.get('/admin/dashboard/stats');
 	}
