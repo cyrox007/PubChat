@@ -74,7 +74,7 @@ async def update_category(
     if not changes:
         return project_category(item)
     for key, value in changes.items():
-        if key not in {"description", "is_active"} and value is None:
+        if key != "description" and value is None:
             raise HTTPException(status_code=422, detail={"error_type": "invalid_category_field"})
         setattr(item, key, value)
     if "is_active" in changes:
