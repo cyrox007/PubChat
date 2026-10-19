@@ -284,7 +284,8 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
     content container used by catalog and room routes. The flex column uses
     the actual header height instead of guessing 64px from the viewport. */
 .app-shell--auth { display: flex; flex-direction: column; min-height: 100dvh; }
-.app-content--auth { flex: 1 0 auto; display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 0; }
+/* Outrank mobile-density.css's .app-content.container gutters at <=390px. */
+.app-shell--auth > .app-content.container.app-content--auth { flex: 1 0 auto; display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 0; }
 .app-content--auth > .route-view-frame { display: flex; flex: 1 0 auto; flex-direction: column; }
 .route-progress { position: fixed; inset: 0 0 auto; z-index: 1800; height: 3px; overflow: hidden; pointer-events: none; background: color-mix(in srgb, var(--ui-primary) 10%, transparent); }
 .route-progress__bar { position: absolute; inset: 0 auto 0 0; width: 38%; border-radius: var(--ui-radius-pill); background: var(--ui-primary); box-shadow: 0 0 12px color-mix(in srgb, var(--ui-primary) 36%, transparent); animation: route-progress 1s var(--ui-ease-out) infinite; }
