@@ -1,6 +1,5 @@
 <template>
 	<main class="auth-screen" aria-labelledby="login-title">
-		<div class="auth-ambient" aria-hidden="true"></div>
 		<section class="auth-card">
 			<div class="auth-brand">
 				<span class="auth-brand__mark" aria-hidden="true">P</span>
@@ -112,7 +111,8 @@ onMounted(async () => {
 
 <style scoped>
 .auth-screen {
-	min-height: calc(100dvh - 64px);
+	min-height: 0;
+	flex: 1 0 auto;
 	display: grid;
 	place-items: center;
 	padding: var(--ui-space-6) var(--ui-space-4);
@@ -151,8 +151,9 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
 .auth-screen {
   position: relative;
   isolation: isolate;
-  min-height: calc(100dvh - 64px);
-  background: radial-gradient(ellipse at 12% 12%, var(--ui-primary-soft), transparent 48%),
+  min-height: 0;
+  background-color: var(--ui-bg);
+  background-image: radial-gradient(ellipse at 12% 12%, var(--ui-primary-soft), transparent 48%),
               radial-gradient(ellipse at 90% 85%, color-mix(in srgb, var(--ui-brand-cyan, #12bcd5) 13%, transparent), transparent 42%);
 }
 .auth-card {
