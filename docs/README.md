@@ -12,7 +12,8 @@
 ## О продукте
 
 - [`product-concept.md`](product-concept.md) — позиционирование и продуктовые инварианты.
-- [`roadmap.md`](roadmap.md) — актуальная дорожная карта.
+- [`roadmap.md`](roadmap.md) — последовательность продуктовых этапов.
+- [`cross-client-delivery-status.md`](cross-client-delivery-status.md) — **проверенное состояние пользовательских сценариев Web / Android / iOS, CI/device QA и следующие незакрытые задачи**. Сверять перед каждой реализацией.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — история выпущенных версий.
 - [`versioning.md`](versioning.md) — политика alpha/beta/stable.
 - [`versioning-quick-reference.md`](versioning-quick-reference.md) — краткий статус версии.
