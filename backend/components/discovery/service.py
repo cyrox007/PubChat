@@ -466,6 +466,7 @@ async def discover_spaces(
     query: str | None = None,
     purpose: str | None = None,
     tag: str | None = None,
+    category: str | None = None,
     limit: int = 30,
     offset: int = 0,
 ) -> list[dict]:
@@ -478,13 +479,14 @@ async def discover_spaces(
     # semantics. Default organic discovery instead uses multiple independent
     # bounded sources so an older Space can re-enter the pool after new social
     # activity rather than being permanently excluded by creation date.
-    if query or purpose or tag:
+    if query or purpose or tag or category:
         candidate_spaces = await list_spaces(
             db,
             viewer_uid=viewer,
             query=query,
             purpose=purpose,
             tag=tag,
+            category=category,
             limit=DISCOVERY_POOL_LIMIT,
             offset=0,
         )
