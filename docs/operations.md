@@ -115,6 +115,8 @@ Standalone pool-health CLI намеренно отсутствует: отдел
 
 ## PostgreSQL и migrations
 
+Для внедрения управляемых категорий пространств (миграция `x2m8q6l11001`, совместимость мобильных клиентов, проверки API и безопасный откат) используйте [Space Categories rollout](space-categories-rollout.md). Это отдельный production gate, а не только завершение CI.
+
 Перед deployment:
 
 1. Создать backup.
