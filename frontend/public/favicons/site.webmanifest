@@ -7,8 +7,8 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
-  "background_color": "#f6f4f1",
-  "theme_color": "#8c2f67",
+  "background_color": "#F7F8FE",
+  "theme_color": "#F7F8FE",
   "icons": [
     {
       "src": "/favicons/android-chrome-192x192.png",
