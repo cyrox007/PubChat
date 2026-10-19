@@ -22,7 +22,7 @@
 | Согласие на новые DM: четыре политики | `/identity/v2/privacy`, enforcement | **Слито [PR #53](https://github.com/cyrox007/PubChat-Android/pull/53), `7160c5d`**, обе Android CI-конфигурации green | [PR #16](https://github.com/cyrox007/PubChat-iOS/pull/16) слит, simulator CI green | Device QA обоих клиентов, cross-client проверка создания DM после revoke/block и 401/403/409 |
 | Каталог Spaces, membership, room/realtime | Код | Код | Каталог; участие/realtime не завершены | Native cross-client round-trip |
 | **Создать Space** (тип, доступ, категории, join policy, лимит, теги) | Реальный API `POST /spaces/v1` | **Слито [PR #51](https://github.com/cyrox007/PubChat-Android/pull/51), `05653df`** | UI/API отсутствует | На Android нужен physical QA; следующий перенос этого сценария на iOS |
-| Space invitations: увидеть, принять/отклонить, войти | Web + API | Нет завершённого inbox flow | Нет завершённого flow | **Следующий Android функциональный срез**; privacy/expired/revoked invites |
+| Space invitations: увидеть, принять/отклонить, войти | Web + API | [Android PR #56](https://github.com/cyrox007/PubChat-Android/pull/56) **слит**, `07cae34`, обе Android CI-конфигурации green: inbox + accept/decline + server-confirmed entry | Нет завершённого flow | **Не подтверждена** физическая Android QA, Web↔Android privacy/expired/revoked/invite-only; iOS ещё требует реализацию |
 | Activities / события, повторы, напоминания | Web/API | Частичная панель событий | Нет полного flow | Нативные повторения, участие, уведомления, DST |
 | Messenger: чат, отправка, реакции и медиа | Web/API | Базовые действия в коде | Неполный messenger | Нативная безопасность, retry/network и privacy |
 | **E2EE DM** | Web security policy/features | **Нет полноценного native verified E2EE** | Нет E2EE | **P0 security blocker**: device keys, trust, no plaintext fallback, сквозные тесты |
@@ -35,7 +35,7 @@
 
 ## Приоритеты после текущих PR
 
-1. **P0: приглашения в Spaces на Android** — полноценный inbox, получение, принять/отклонить, открыть Space только после подтверждения сервера; blocked/private/expired/invite-only случаи; тесты и device QA. Это следующий *функциональный* срез, а не повтор создания Space.
+1. **P0: Space invitations acceptance** — Android [#56](https://github.com/cyrox007/PubChat-Android/pull/56) **слит** в `master`, `07cae34`, обе CI-конфигурации green. Нужны реальные Android устройства, blocked/private/expired/revoked/invite-only и Web↔Android cross-client тесты. Далее — недостающий iOS flow. Не повторять Android Create Space и invitation inbox.
 2. **P0 security: Messenger E2EE на Android**, затем iOS: проверить поведение сервера при required E2EE, нативные device keys/verification/revocation, гарантированный fail-closed send и отсутствие downgrade до plaintext. Нельзя выдавать базовую отправку DM за защищённый Messenger.
 3. **P0 safety: нативный Safety Center** для Android/iOS — server-mediated reports/restrictions/appeals, приватные проекции, разрешения и запрет утечек.
 4. **0.7 незакрыто:** DM consent **уже слит на Android/iOS** ([Android #53](https://github.com/cyrox007/PubChat-Android/pull/53), [iOS #16](https://github.com/cyrox007/PubChat-iOS/pull/16)); остаются cross-client consent/block/revocation, публичный Multi-Persona contract, реальные устройства.
