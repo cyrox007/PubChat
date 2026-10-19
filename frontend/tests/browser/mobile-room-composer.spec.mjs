@@ -10,6 +10,7 @@ test('mobile Space composer gets full width, 44px controls and independent prese
   for (const width of [320, 344, 390]) {
     await page.setViewportSize({ width, height: 760 });
     await page.setContent(`
+      <meta name="viewport" content="width=device-width, initial-scale=1">
       <style>* { box-sizing: border-box } html, body { margin: 0 } .app-shell { width: 100%; }</style>
       <div class="app-shell">
         <div class="conversation-area" style="width:100%;height:600px">
