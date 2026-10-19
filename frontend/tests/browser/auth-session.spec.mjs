@@ -70,7 +70,11 @@ test('registration, refresh rotation, logout and login survive real browser cook
   await filtersButton.click();
   const filterDialog = page.getByRole('dialog', { name: 'Фильтры пространств' });
   await expect(filterDialog).toBeVisible();
-  await filterDialog.getByRole('button', { name: 'Игры' }).click();
+  await filterDialog.getByRole('group', { name: 'Формат общения' }).getByRole('button', { name: 'Игры' }).click();
+  const categoryGroup = filterDialog.getByRole('group', { name: 'Категории' });
+  await expect(categoryGroup.getByRole('button', { name: 'Дизайн' })).toBeVisible();
+  await categoryGroup.getByRole('button', { name: 'Дизайн' }).click();
+  await expect(categoryGroup.getByRole('button', { name: 'Дизайн' })).toHaveAttribute('aria-pressed', 'true');
   await filterDialog.getByRole('button', { name: 'Показать пространства' }).click();
   await expect(filterDialog).toHaveCount(0);
   await page.getByRole('button', { name: 'Сбросить', exact: true }).click();
