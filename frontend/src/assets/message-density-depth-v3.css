@@ -128,9 +128,6 @@
     border-color: color-mix(in srgb, var(--ui-border) 58%, var(--ui-primary) 42%);
   }
 }
-.app-shell .route-view-frame {
-  isolation: isolate;
-}
 .ui-route-enter-active {
   transition: opacity 190ms ease, transform 190ms ease;
 }
