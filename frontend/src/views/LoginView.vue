@@ -40,7 +40,7 @@
 						placeholder="Ваш пароль"
 						required
 					/>
-					<button class="password-toggle" type="button" :aria-pressed="showPassword" :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'" @click="showPassword = !showPassword">{{ showPassword ? 'Скрыть' : 'Показать' }}</button>
+					<button class="password-toggle" type="button" :aria-pressed="showPassword" :aria-label="showPassword ? 'Скрыть ввод' : 'Показать ввод'" @click="showPassword = !showPassword">{{ showPassword ? 'Скрыть' : 'Показать' }}</button>
 				</label>
 
 				<button class="ui-button ui-button--primary ui-button--block" type="submit" :disabled="isSubmitting" :aria-busy="isSubmitting ? 'true' : 'false'">
