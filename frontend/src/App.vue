@@ -29,6 +29,9 @@ const SPACE_CONTEXT_ROUTES = new Set(['space', 'space-community', 'space-life', 
 
 const BOOTSTRAP_RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000];
 const TRANSIENT_BOOTSTRAP_STATUSES = new Set([502, 503, 504]);
+// Guest auth pages need a full-bleed background; the app content container
+// is intentionally constrained for authenticated routes only.
+const isGuestAuthPage = computed(() => route.name === 'login' || route.name === 'registration');
 const spaceContextUid = computed(() => {
 	if (!SPACE_CONTEXT_ROUTES.has(String(route.name || ''))) return '';
 	return String(route.params.uid || '');
@@ -232,7 +235,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 </script>
 
 <template>
-	<div class="app-shell">
+	<div class="app-shell" :class="{ 'app-shell--auth': isGuestAuthPage }">
 		<ReplyNotifications />
 		<MessageNotifications />
 		<CallOverlay />
@@ -262,7 +265,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 			</div>
 		</transition>
 
-		<div class="container app-content" :aria-busy="routePending ? 'true' : 'false'">
+		<div class="container app-content" :class="{ 'app-content--auth': isGuestAuthPage }" :aria-busy="routePending ? 'true' : 'false'">
 			<RouterView v-slot="{ Component, route: routedView }">
 				<Transition name="ui-route">
 					<div :key="spaceContextUid ? `space:${spaceContextUid}` : routedView.fullPath" class="route-view-frame">
@@ -278,6 +281,16 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 .app-shell { min-height: 100dvh; }
 .app-content { position: relative; margin-top: var(--ui-space-2); }
 .route-view-frame { position: relative; width: 100%; min-width: 0; }
+/* Allow the guest-auth gradient to cover the full viewport, while the card
+   keeps its own readable max-width. All other routes stay in .container. */
+.app-shell--auth { display: flex; flex-direction: column; min-height: 100dvh; }
+.app-content.app-content--auth {
+  display: flex; flex: 1 0 auto; flex-direction: column;
+  width: 100%; max-width: none; min-width: 0;
+  padding-inline: 0; margin-top: 0;
+}
+.app-content--auth .route-view-frame { display: flex; flex: 1 0 auto; flex-direction: column; }
+.app-content--auth :deep(.auth-screen) { flex: 1 0 auto; width: 100%; min-height: 0; }
 .route-progress { position: fixed; inset: 0 0 auto; z-index: 1800; height: 3px; overflow: hidden; pointer-events: none; background: color-mix(in srgb, var(--ui-primary) 10%, transparent); }
 .route-progress__bar { position: absolute; inset: 0 auto 0 0; width: 38%; border-radius: var(--ui-radius-pill); background: var(--ui-primary); box-shadow: 0 0 12px color-mix(in srgb, var(--ui-primary) 36%, transparent); animation: route-progress 1s var(--ui-ease-out) infinite; }
 .route-progress-enter-active, .route-progress-leave-active { transition: opacity var(--ui-motion-fast) var(--ui-ease); }
@@ -300,6 +313,7 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 @media (max-width: 720px) {
 	.app-shell { padding-bottom: calc(var(--ui-mobile-nav-height) + env(safe-area-inset-bottom)); }
 	.app-content { margin-top: 0; }
+	.app-shell--auth { padding-bottom: 0; }
 	.connection-notice { top: var(--ui-space-2); width: calc(100% - 16px); padding: var(--ui-space-3); border-radius: var(--ui-radius-md); }
 }
 </style>
