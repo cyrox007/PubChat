@@ -21,6 +21,8 @@
 
 ## Текущий Android-срез (разработка, не production parity)
 
+> Точные статусы сценариев и PR находятся в [живом реестре трёх клиентов](cross-client-delivery-status.md), а не в историческом описании ниже. **Создание Space уже слито в Android `master`**: [PR #51](https://github.com/cyrox007/PubChat-Android/pull/51), коммит `05653df`; остаётся physical-device QA. Следующий пользовательский срез — Space invitations.
+
 В клиенте присутствуют вход/регистрация, People/Persona basics, Spaces realtime/chat, Messenger text/actions, центр уведомлений, deep links, FCM registration, нативный WebRTC audio/video, foreground service и отдельные действия входящего вызова. Реализованы короткоживущий recovery offer и ограниченные попытки восстановления signaling/ICE.
 
 **Нельзя считать завершённым:** Android E2EE-DM, полный паритет Spaces/Persona/Safety/Admin, DM-вложения, verified call E2EE, Telecom/гарнитуры/устройства, Wi-Fi↔LTE handover, real-device end-to-end проверки. Подробности и актуальный чек-лист находятся в [Android README](https://github.com/cyrox007/PubChat-Android/blob/master/README.md).
@@ -52,11 +54,7 @@
 
 ## iOS — новое нативное направление
 
-Репозиторий `cyrox007/PubChat-iOS` создан и первоначально был пустым.
-Первый этап реализуется в [iOS PR #1](https://github.com/cyrox007/PubChat-iOS/pull/1):
-SwiftUI + XcodeGen + GitHub Actions macOS без локального Mac, Identity v2
-и Keychain, стартовые read-only каталоги. Пока CI и iPhone device tests не пройдены,
-эта реализация не считается готовой.
+Репозиторий `cyrox007/PubChat-iOS` **уже содержит** SwiftUI, XcodeGen, Identity v2/Keychain, каталоги, friendship hub, приватное управление несколькими Persona, availability и настройку согласия на DM. [PR #16](https://github.com/cyrox007/PubChat-iOS/pull/16) по DM privacy слит с зелёным iPhone Simulator CI. При этом **реальная проверка на iPhone не завершена**, а Spaces realtime, полноценный Messenger/E2EE, Safety Center и APNs не реализованы. См. [живую матрицу](cross-client-delivery-status.md).
 
 - Xcode/simulator compilation: GitHub Actions на стандартном `macos-26` без Apple signing.
 - Signed `.ipa` и TestFlight требуют Apple Developer, сертификатов и App Store Connect;
