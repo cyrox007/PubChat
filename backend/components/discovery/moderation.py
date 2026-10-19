@@ -17,6 +17,7 @@ async def discover_spaces_with_moderation(
     query: str | None = None,
     purpose: str | None = None,
     tag: str | None = None,
+    category: str | None = None,
     limit: int = 30,
     offset: int = 0,
 ) -> list[dict]:
@@ -33,6 +34,7 @@ async def discover_spaces_with_moderation(
         query=query,
         purpose=purpose,
         tag=tag,
+        category=category,
         limit=DISCOVERY_POOL_LIMIT,
         offset=0,
     )
