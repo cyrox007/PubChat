@@ -79,6 +79,29 @@ class LexiconContractTests(unittest.TestCase):
         self.assertEqual(value["matches"], [])
         self.assertEqual(value["preview"], "кот добрый")
 
+    def test_rules_have_configurable_surfaces_and_severity(self):
+        entry = rule("спам", "token")
+        entry["surfaces"] = ["space_chat", "comment"]
+        entry["severity"] = "high"
+        in_chat = simulate_rules("спам", [entry], revision=1, mode="shadow", surface="space_chat")
+        in_dm = simulate_rules("спам", [entry], revision=1, mode="shadow", surface="messenger_plaintext")
+        self.assertEqual(len(in_chat["matches"]), 1)
+        self.assertEqual(in_chat["matches"][0]["severity"], "high")
+        self.assertEqual(in_dm["matches"], [])
+        self.assertEqual(in_dm["preview"], "спам")
+        with self.assertRaises(ValidationError):
+            LexiconRuleInput(term="спам", surfaces=["all", "space_chat"])
+        with self.assertRaises(ValidationError):
+            LexiconRuleInput(term="спам", surfaces=["space_chat", "space_chat"])
+        with self.assertRaises(ValidationError):
+            LexiconSimulate(text="спам", surface="unknown")
+
+    def test_common_latin_leetspeak(self):
+        term = LexiconRuleInput(term="spam", language="en", match_mode="token", action="mask").model_dump(mode="json")
+        value = simulate_rules("sp4m", [term], revision=1, mode="off")
+        self.assertEqual(len(value["matches"]), 1)
+        self.assertEqual(value["preview"], "••••")
+
     def test_actions_are_only_preview_no_automatic_sanction(self):
         a = rule("bad", "token")
         a["language"] = "en"
