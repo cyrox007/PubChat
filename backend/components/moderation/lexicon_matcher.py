@@ -122,7 +122,6 @@ def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str, su
                         found.append({
                             "rule_uid": str(rule["uid"]), "category": rule["category"],
                             "severity": rule.get("severity", "medium"),
-                            "severity": rule.get("severity", "medium"),
                             "action": rule["action"], "start": start, "end": end,
                             "match_kind": "obfuscated" if (candidate, start, end) not in tokens else match_mode,
                         })
@@ -132,6 +131,7 @@ def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str, su
                     if current == tuple(phrase) and current not in exceptions:
                         found.append({
                             "rule_uid": str(rule["uid"]), "category": rule["category"],
+                            "severity": rule.get("severity", "medium"),
                             "action": rule["action"], "start": tokens[j][1],
                             "end": tokens[j + len(phrase) - 1][2],
                             "match_kind": "phrase",
