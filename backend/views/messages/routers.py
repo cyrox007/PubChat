@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from components.auth.middleware import auth_middle
 from components.message.actions import edit_message, ensure_message_access, load_message, reaction_projection, soft_delete_message, toggle_reaction
 from components.message.model import Message, PrivateMessage
+from components.message.encryption_policy import assert_plaintext_allowed
 from components.moderation.policy import assert_allowed
 from components.room.model import RoomMember
 from database import Database
@@ -101,6 +102,12 @@ def install(app: FastAPI):
         user_uid = _user_uid(current_user)
         await assert_allowed(db, user_uid, "messenger.send" if surface == "messenger" else "space.chat.send")
         message = await load_message(db, surface, message_uid)
+        if surface == "messenger":
+            await ensure_message_access(db, surface, message, user_uid, write=True)
+            if message.content_type == "e2ee":
+                raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_edit_requires_e2ee"})
+            other_uid = message.receiver_uid if message.sender_uid == user_uid else message.sender_uid
+            await assert_plaintext_allowed(db, user_uid, other_uid)
         result = await edit_message(db, surface, message_uid, user_uid, payload.content)
         await _publish_frame(surface, message, _standard_frame(surface, message, overrides=result))
         return {"status": "ok", "message": result}
@@ -120,6 +127,8 @@ def install(app: FastAPI):
         await ensure_message_access(db, surface, source, user_uid)
         if source.content_type == "deleted":
             raise HTTPException(status_code=409, detail={"error_type": "message_deleted"})
+        if surface == "messenger" and source.content_type == "e2ee":
+            raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_reply_requires_e2ee"})
         clean = payload.content.strip()
         metadata = {"reply_to": _reply_snapshot(surface, source)}
         if surface == "room":
@@ -134,6 +143,7 @@ def install(app: FastAPI):
             target_uid = source.receiver_uid if source.sender_uid == user_uid else source.sender_uid
             if not await _dm_allowed(db, user_uid, target_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "dm_not_allowed"})
+            await assert_plaintext_allowed(db, user_uid, target_uid)
             created = await PrivateMessage.create_private_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(target_uid)})
             await private_manager.send_to_user(user_uid, created)
             if target_uid != user_uid:
@@ -166,6 +176,10 @@ def install(app: FastAPI):
         await ensure_message_access(db, surface, source, user_uid)
         if source.content_type == "deleted":
             raise HTTPException(status_code=409, detail={"error_type": "message_deleted"})
+        if source.content_type == "e2ee":
+            # An encrypted envelope must never be forwarded as plaintext or as an
+            # undecryptable "e2ee" row without the corresponding device envelopes.
+            raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_forward_requires_e2ee"})
         metadata = dict(source.media_metadata or {})
         metadata["forwarded_from"] = {"surface": surface, "message_uid": str(source.uid), "author_uid": str(source.author_uid if surface == "room" else source.sender_uid)}
         if payload.target_surface == "room":
@@ -179,6 +193,7 @@ def install(app: FastAPI):
             await assert_allowed(db, user_uid, "messenger.send")
             if not await _dm_allowed(db, user_uid, payload.target_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "dm_not_allowed"})
+            await assert_plaintext_allowed(db, user_uid, payload.target_uid)
             forwarded = await PrivateMessage.create_private_message(db, {"content": source.text, "content_type": source.content_type, "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(payload.target_uid)})
             await private_manager.send_to_user(user_uid, forwarded)
             if payload.target_uid != user_uid:
