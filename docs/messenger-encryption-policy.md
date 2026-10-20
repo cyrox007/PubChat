@@ -63,6 +63,8 @@ The client-side switch is not a security boundary. Both transports are independe
 
 - plaintext Messenger WebSocket frames are consumed and rejected when effective mode is `e2ee`;
 - encrypted `/crypto/v1/messages` sends are rejected when effective mode is `plaintext` or E2EE is disabled;
+- legacy HTTP `/messages/v2/messenger/{uid}` text edits, `/reply` and `/forward` to Messenger must also assert the **current target conversation** is in effective `plaintext` mode before writing; switching a conversation to E2EE cannot be bypassed through REST actions;
+- editing/replying to an existing `content_type=e2ee` envelope using plaintext and forwarding such envelopes without device-specific ciphertext envelopes are refused instead of fabricating a cleartext message or a non-decryptable row;
 - `required`/explicit `e2ee` with missing crypto devices blocks the send instead of silently downgrading to plaintext;
 - optional E2EE activation is rejected server-side unless the Account has positive reputation or an elevated platform role.
 
