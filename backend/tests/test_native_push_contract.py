@@ -72,6 +72,26 @@ class NativePushContractTests(unittest.TestCase):
         default = message_delivery_policy("messenger", online=False, active_context=False)
         self.assertFalse(default["native_push_eligible"])
 
+    def test_native_push_endpoints_are_unique_and_ios_ready(self):
+        import asyncio
+        from unittest.mock import patch
+
+        routes = create_app().routes
+        for endpoint in ("/config", "/devices", "/devices/remove"):
+            matched = [r for r in routes if r.path == "/notifications/v1/native-push" + endpoint]
+            # Two overlapping FastAPI paths shadowed the real APNs provider and
+            # made iOS fail to decode its required "ios" capability.
+            self.assertEqual(len(matched), 1, endpoint)
+        config_route = next(r for r in routes if r.path == "/notifications/v1/native-push/config")
+        with patch("views.notifications.native_push_routers.fcm_configured", return_value=True), \
+             patch("views.notifications.native_push_routers.apns_configured", return_value=True):
+            response = asyncio.run(config_route.endpoint(current_user={"user_uid": str(uuid4())}))
+        self.assertEqual(response["status"], "ok")
+        self.assertEqual(response["android"], {"provider": "fcm", "enabled": True})
+        self.assertEqual(response["ios"], {"provider": "apns", "enabled": True})
+        self.assertTrue(response["fcm_enabled"])
+        self.assertEqual(response["privacy"], {"message_content_in_push": False})
+
     def test_native_push_routes_are_installed(self):
         paths = {route.path for route in create_app().routes}
         self.assertIn("/notifications/v1/native-push/config", paths)
