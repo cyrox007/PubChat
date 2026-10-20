@@ -58,7 +58,7 @@ def install(app: FastAPI) -> None:
         _: Account = Depends(require_lexicon_editor),
         db: AsyncSession = Depends(Database.session_generator),
     ):
-        return {"status": "ok", "simulation": await simulate_policy(db, payload.text, payload.revision)}
+        return {"status": "ok", "simulation": await simulate_policy(db, payload.text, payload.revision, payload.rules)}
 
     @router.get("/audit")
     async def audit(
