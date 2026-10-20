@@ -4,7 +4,7 @@
 			<div>
 				<span class="eyebrow">Личный inbox</span>
 				<h1>Уведомления</h1>
-				<p>PubChat сообщает о важном без давления: вы сами выбираете внешние напоминания, а сообщения пространств не преследуют вас, когда вы офлайн.</p>
+				<p>PubChat сообщает о личных сообщениях и ответах вам в пространствах, даже если вкладка свёрнута. Общий поток комнат не рассылается Push-уведомлениями.</p>
 			</div>
 			<button v-if="unread" class="ui-button ui-button--ghost" type="button" :disabled="markingAll" @click="markAll">
 				{{ markingAll ? 'Отмечаем…' : `Прочитать все · ${unread}` }}
@@ -15,8 +15,8 @@
 			<div class="delivery-card__intro">
 				<div>
 					<span class="eyebrow">Связь вне вкладки</span>
-					<h2 id="delivery-settings-title">Как напоминать о личных сообщениях</h2>
-					<p>Внешние уведомления относятся только к Messenger и включаются явно. Текст личной переписки в email и push не отправляется.</p>
+					<h2 id="delivery-settings-title">Как получать ответы и личные сообщения</h2>
+					<p>Push для Messenger и ответов на ваши сообщения в Space включается с вашего разрешения. Текст сообщений и имена собеседников не передаются в Push.</p>
 				</div>
 				<button class="ui-button ui-button--ghost" type="button" :disabled="deliveryLoading" @click="loadDeliverySettings">
 					{{ deliveryLoading ? 'Проверяем…' : 'Обновить' }}
@@ -147,8 +147,8 @@ const pushDescription = computed(() => {
 	if (!pushState.value.supported) return 'Этот браузер или режим сейчас не предоставляет Web Push. На iPhone/iPad проверьте установленную PWA.';
 	if (!pushState.value.serverEnabled) return 'Сервер push пока не настроен. Остальные способы уведомлений продолжают работать.';
 	if (pushState.value.permission === 'denied') return 'Уведомления запрещены в настройках браузера. Разрешение нужно изменить там вручную.';
-	if (pushState.value.registered) return 'Это устройство подписано на приватные уведомления Messenger без текста сообщений.';
-	return 'Получать системное уведомление о новом личном сообщении, когда PubChat не открыт.';
+	if (pushState.value.registered) return 'Это устройство подписано на уведомления Messenger и личные ответы в Space (без текста сообщений).';
+	return 'Получать Push о новых личных сообщениях и ответах вам в Space, когда PubChat свёрнут.';
 });
 
 const loadDeliverySettings = async () => {
@@ -210,9 +210,11 @@ const toggleWebPush = async () => {
 		if (pushState.value.registered) {
 			await disableMessengerWebPush();
 			preferences.value.web_push_messenger = false;
+			preferences.value.web_push_space = false;
 		} else {
 			pushState.value = { ...pushState.value, ...(await enableMessengerWebPush()) };
 			preferences.value.web_push_messenger = true;
+			preferences.value.web_push_space = true;
 		}
 		pushState.value = { ...pushState.value, ...(await webPushCapability()) };
 	} catch (error) {
