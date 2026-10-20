@@ -521,6 +521,7 @@ async def _mark_receipt(
     if status not in {"delivered", "terminal"}:
         raise ValueError("Unsupported terminal native push receipt state")
     if await _claimed_row(db, claim) is None:
+        await db.rollback()
         return False
     record = (await db.execute(
         select(NativePushDeliveryReceipt).where(
