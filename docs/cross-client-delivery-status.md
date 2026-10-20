@@ -33,6 +33,19 @@
 
 **Не маркировать «создание Space отсутствует» на Android.** Уже реализован полноценный API-backed Compose flow. Однако реализация в коде и CI green **не означают** физическую приёмку.
 
+## Новый ожидаемый объём: Personal Feed & Media (план, 20.10.2026)
+
+| Будущий сценарий | Backend/Web | Android | iOS | Условие готовности |
+| --- | --- | --- | --- | --- |
+| S3-compatible MediaService и Account storage quotas | **Запланировано [#135](https://github.com/cyrox007/PubChat/issues/135)**; действующий media security baseline не равен S3 | Нет нового API-клиента | Нет нового API-клиента | Atomic quota / multipart / reconcile / rights / privacy и реальный S3-compatible integration gate |
+| Персональная стена, посты с текстом/фото/смешанными каруселями | **Запланировано [#136](https://github.com/cyrox007/PubChat/issues/136)** | Запланировано | Запланировано | Публикация и действия с серверно проверяемой приватностью |
+| Лента подписок/друзей/«Для вас» | **Запланировано [#137](https://github.com/cyrox007/PubChat/issues/137)** | Запланировано | Запланировано | Block/privacy до ranking, cursor paging, серверные реакции |
+| Граффити с рисовалкой | **Запланировано [#138](https://github.com/cyrox007/PubChat/issues/138)** | Запланировано | Запланировано | Touch/stylus/mouse, undo/redo, безопасная публикация |
+| Видео и музыка/аудио | **Запланировано [#139](https://github.com/cyrox007/PubChat/issues/139)** | Запланировано | Запланировано | Processing/transcode, квоты, права, player |
+| Stories/Highlights и Reels | **Запланировано [#140](https://github.com/cyrox007/PubChat/issues/140), [#141](https://github.com/cyrox007/PubChat/issues/141)** | Запланировано | Запланировано | TTL, audiences, CDN invalidation, video feed, real-device QA |
+
+**Важно:** это согласованный план [Epic #134](https://github.com/cyrox007/PubChat/issues/134) и [ТЗ](social-content-media-platform-v1.md), **не существующие API/экраны**. Требуются подтверждённые code/CI/device acceptance [#142](https://github.com/cyrox007/PubChat/issues/142). Уже открытые P0 в разделах выше остаются ближайшими security/safety задачами.
+
 ## Приоритеты после текущих PR
 
 1. **P0: Space invitations acceptance** — Android [#56](https://github.com/cyrox007/PubChat-Android/pull/56) **слит** в `master`, `07cae34`, обе CI-конфигурации green. Нужны реальные Android устройства, blocked/private/expired/revoked/invite-only и Web↔Android cross-client тесты. Далее — недостающий iOS flow. Не повторять Android Create Space и invitation inbox.

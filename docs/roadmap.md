@@ -15,15 +15,20 @@ Android [`cyrox007/PubChat-Android`](https://github.com/cyrox007/PubChat-Android
 
 - **0.7 Social Core** — Account/Persona, социальные связи, intent и discovery,
   единое согласие на DM; старт нативного iOS, закрытие базовых пробелов Android.
-- **0.8 Living Spaces** — Spaces, realtime и social loops, Activities, игры,
-  повторное участие и память сообществ с функциональным паритетом.
-- **0.9 Product Experience** — Safety Center, нативные push, звонки,
-  достижения/репутация, поддержка и экономические функции с паритетом.
-- **1.0 Release** — общая API/contract матрица, автотесты, реальные устройства
-  Web/Android/iOS, безопасность, подписанные мобильные сборки и release gate.
+- **0.8 Living Spaces + Social Content foundation** — Spaces/realtime/Activities и новое направление **персональной стены/ленты**, S3-compatible MediaService, квоты Account, текст/фото/смешанные посты, базовые реакции/комментарии с Web/Android/iOS-паритетом по этапам.
+- **0.9 Product Experience + Media & Engagement** — Safety Center, нативные push, звонки, репутация и экономика; **граффити-рисовалка, видеопосты, музыка/аудио, Stories (24 часа, highlights), Reels/короткие вертикальные видео, общая обработка медиа и рекомендации**.
+- **1.0 Release** — общая API/contract матрица, автотесты, реальные устройства Web/Android/iOS, безопасность, подписанные мобильные сборки и release gate; **согласованные сценарии личной стены, ленты, медиа, Stories и Reels также входят в scope трёхклиентной приёмки**, не считаются реализованными только по roadmap.
 
 Существующие `0.6.x-alpha` hardening-задачи ниже не отменяются:
 это актуальная инфраструктурная база, на которой строится продуктовая линия.
+
+## Новый обязательный продуктовый трек: персональная лента, публикации и медиаплатформа (решение 20.10.2026)
+
+**План, не реализованный функционал.** [Техническое/продуктовое ТЗ](social-content-media-platform-v1.md) и [Epic #134](https://github.com/cyrox007/PubChat/issues/134) закрепляют личную стену каждого пользователя/Persona, домашнюю ленту подписок/друзей/рекомендаций, посты (текст, картинки, смешанные карусели, **граффити с рисовалкой**, видео, музыка/аудио), Stories, Highlights и Reels.
+
+**S3 и персональные квоты являются первыми архитектурными зависимостями, а не необязательными оптимизациями.** MediaService должен поддерживать S3-compatible провайдеров и локальную development-реализацию; настройка глобальной квоты и индивидуального override **на Account**, единые лимиты для всех Persona, атомарная резервация байтов при конкурентных/multipart загрузках, статусы обработки, защита доступа, очистка и инвентаризация объекта. Аналог Notes quota **по принципам**, без слепого переноса числовых ограничений на видео и музыку. Учитывать права на музыку, контентную модерацию, стоимость egress/CDN и физическую QA.
+
+**Порядок:** [#135 storage/quotas](https://github.com/cyrox007/PubChat/issues/135) → [#136 posts/wall](https://github.com/cyrox007/PubChat/issues/136) → [#137 home feed](https://github.com/cyrox007/PubChat/issues/137); затем [#138 graffiti](https://github.com/cyrox007/PubChat/issues/138), [#139 video/music](https://github.com/cyrox007/PubChat/issues/139), [#140 Stories](https://github.com/cyrox007/PubChat/issues/140), [#141 Reels](https://github.com/cyrox007/PubChat/issues/141) и [#142 cross-client acceptance](https://github.com/cyrox007/PubChat/issues/142). Разработка по API vertical slices, а не по разрозненным экранам. Уже открытые P0 (native E2EE, Safety Center) остаются P0 и не закрываются добавлением этого scope.
 
 ## Текущий статус
 
@@ -421,6 +426,10 @@ Beta назначается только когда launch-critical journeys р�
 ## Постоянные инварианты
 
 - Account != Persona.
+- Personal posts/stories/reels are Account-owned and Persona-authored; storage quota is Account-level, not one quota per Persona.
+- S3 object presence or a client-side file reference is not proof of a publishable asset; server-confirmed upload, scanning, quota and access state are required.
+- Feed ranking, delivery URLs and CDN caches must not bypass visibility/blocks/moderation.
+- Expiring a Story removes authorization to view even if object cleanup and backups have not yet completed.
 - Reputation/achievement != Permission.
 - Space moderator != Platform moderator.
 - Деньги не покупают trust/moderation authority.

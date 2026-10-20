@@ -13,6 +13,7 @@
 
 - [`product-concept.md`](product-concept.md) — позиционирование и продуктовые инварианты.
 - [`roadmap.md`](roadmap.md) — последовательность продуктовых этапов.
+- [`social-content-media-platform-v1.md`](social-content-media-platform-v1.md) — **план** личной стены/ленты, текстовых и фото-постов, граффити, видео/музыки, Stories/Reels и S3-хранилища с персональными Account-квотами; [эпик #134](https://github.com/cyrox007/PubChat/issues/134). Не считать готовой функцией.
 - [`cross-client-delivery-status.md`](cross-client-delivery-status.md) — **проверенное состояние пользовательских сценариев Web / Android / iOS, CI/device QA и следующие незакрытые задачи**. Сверять перед каждой реализацией.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — история выпущенных версий.
 - [`versioning.md`](versioning.md) — политика alpha/beta/stable.
