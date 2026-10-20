@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import jwt
+from components.notification.apns_provider import APNsDeliveryError, APNsProvider, apns_configured, APNS_TOKEN_PATTERN
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -142,6 +143,8 @@ async def upsert_native_push_device(db: AsyncSession, account_uid: UUID, payload
         raise ValueError("android_requires_fcm")
     if payload.platform == "ios" and payload.provider != "apns":
         raise ValueError("ios_requires_apns")
+    if payload.provider == "apns" and not APNS_TOKEN_PATTERN.fullmatch(payload.token):
+        raise ValueError("apns_token_invalid")
 
     current = datetime.utcnow()
     digest = token_fingerprint(payload.token)
@@ -336,6 +339,30 @@ class FCMProvider:
         return await asyncio.to_thread(self._send_sync, target, payload)
 
 
+class NativePushMultiplexer:
+    """Dispatch to FCM or APNs by registered installation, never by user input."""
+    def __init__(self) -> None:
+        self.fcm = FCMProvider()
+        self.apns = APNsProvider()
+
+    @property
+    def configured(self) -> bool:
+        return self.fcm.configured or self.apns.configured
+
+    async def send(self, target: NativePushTarget, payload: dict[str, str]) -> str:
+        if target.provider == "fcm" and target.platform == "android":
+            return await self.fcm.send(target, payload)
+        if target.provider == "apns" and target.platform == "ios":
+            try:
+                return await self.apns.send(target.token, payload)
+            except APNsDeliveryError as error:
+                raise NativePushProviderError(
+                    error.reason, retryable=error.retryable,
+                    terminal_device=error.terminal_device,
+                ) from error
+        raise NativePushProviderError("unsupported_native_push_provider", retryable=False)
+
+
 async def _candidate_accounts(db: AsyncSession, limit: int) -> list[UUID]:
     result = await db.execute(
         select(NativePushDevice.account_uid)
@@ -514,10 +541,10 @@ async def run_native_push_worker(
     now: datetime | None = None,
 ) -> NativePushStats:
     current = utc_naive(now or datetime.now(timezone.utc))
-    provider = provider or FCMProvider()
+    provider = provider or NativePushMultiplexer()
     stats = NativePushStats()
     if not provider.configured:
-        logger.error("Native push skipped: direct FCM HTTP v1 credentials are not configured")
+        logger.error("Native push skipped: neither FCM nor APNs credentials are configured")
         return stats
 
     if not realtime_service.distributed:
