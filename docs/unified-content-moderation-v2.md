@@ -114,6 +114,10 @@ Media pipeline: upload quarantine → validate/scan → OCR frames/images/graffi
 - Space moderator видит/настраивает только разрешённую Space область и не получает права читать личку или отменять platform rules;
 - privileged decision/action audit, immutable moderation events, reporter privacy projection, appeal/revoke + retention.
 
+### Реализационный срез #145 — словарь/симулятор
+
+Функциональный PR #145 создаёт управляемые admin словари с immutable revisions, role permission, предпросмотром, историей и shadow/off без enforcement. Полный текст/архитектура [`moderation-lexicon-v1.md`](moderation-lexicon-v1.md). **Реальный preflight и автоматическая цензура пользовательских сообщений ещё не реализованы** до #146. Поставщик AI-copilot не получает эти полномочия.
+
 ## 8. Этапы и обязательная приёмка
 
 1. **P0/P1 foundation**: правила/лексикон/симулятор [#145](https://github.com/cyrox007/PubChat/issues/145) → deterministic synchronous preflight для plaintext [#146](https://github.com/cyrox007/PubChat/issues/146), с tests на все входы; не ломать chat realtime.

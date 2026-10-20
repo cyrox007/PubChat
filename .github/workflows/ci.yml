@@ -98,6 +98,10 @@ jobs:
         env:
           PUBCHAT_POSTGRES_INTEGRATION: "1"
         run: python -m unittest tests.test_postgres_integration
+      - name: Test moderation lexicon revisions and rollback against PostgreSQL
+        env:
+          PUBCHAT_POSTGRES_INTEGRATION: "1"
+        run: python -m unittest tests.test_moderation_lexicon_postgres_integration
       - name: Run Redis realtime integration smoke
         env:
           PUBCHAT_REDIS_INTEGRATION: "1"

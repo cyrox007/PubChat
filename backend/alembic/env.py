@@ -51,6 +51,7 @@ from components.notification.model import (
     UserNotification,
 )
 from components.moderation.model import ModerationAction, ModerationAppeal, ModerationReport
+from components.moderation.lexicon_model import ModerationLexiconState, ModerationLexiconRevision, ModerationLexiconAudit
 from components.moderation.ai_model import ModerationAIRecommendation
 from components.moderation.abuse_model import TrustSafetyAbuseSignal
 from components.moderation.media_model import ModerationMediaRecord

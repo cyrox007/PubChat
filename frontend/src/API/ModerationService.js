@@ -105,6 +105,30 @@ export default class ModerationService {
 		return $api.post(`/trust-safety/v1/reports/${reportUid}/media-records/${recordUid}/remove`, payload);
 	}
 
+	static lexiconPolicy() {
+		return $api.get('/trust-safety/v1/lexicon');
+	}
+
+	static lexiconRevision(revision) {
+		return $api.get(`/trust-safety/v1/lexicon/revisions/${revision}`);
+	}
+
+	static saveLexiconRevision(body) {
+		return $api.post('/trust-safety/v1/lexicon/revisions', body);
+	}
+
+	static activateLexiconRevision(body) {
+		return $api.post('/trust-safety/v1/lexicon/activate', body);
+	}
+
+	static simulateLexicon(body) {
+		return $api.post('/trust-safety/v1/lexicon/simulate', body);
+	}
+
+	static lexiconAudit(params = {}) {
+		return $api.get('/trust-safety/v1/lexicon/audit', { params });
+	}
+
 	static moderationAIConfig() {
 		return $api.get('/trust-safety/v1/ai-assessment/config');
 	}
