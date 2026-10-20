@@ -12,6 +12,7 @@
 - production dependency audits (`npm audit --omit=dev --audit-level=high` + `pip-audit`) проходят без unresolved vulnerability;
 - browser-sensitive slice проходит Playwright Chromium/Firefox/WebKit/mobile gate;
 - privacy/permissions/data self-review завершён;
+- для write paths с сообщениями/публикациями проверены (если соответствующий moderation v2 gate внедрён) единые серверные правила слов/фраз/вариаций, отсутствие запрещённого plaintext в push/search/quote/WS previews, report-from-item, кейс с ограниченным контекстом, E2EE privacy и audit/appeals из [Unified Moderation v2](unified-content-moderation-v2.md); модельный AI не выдаёт тяжёлые санкции автоматически;
 - пользовательская и техническая документация обновлена;
 - CI зелёный на exact functional head;
 - если срез затрагивает Posts/Stories/Reels/S3: проверены реальные S3-compatible provider + quota reservation/reconciliation, private/public ACL, права/модерация медиа, просроченные Stories, revocation/cached URL и cross-client code/CI/device states из [Social Content & Media v1](social-content-media-platform-v1.md); до готовности endpoint недоступен публично или находится под feature flag.
