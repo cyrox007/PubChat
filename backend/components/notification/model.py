@@ -126,6 +126,26 @@ class ExternalDeliveryLedger(Database.Base):
     )
 
 
+class NativePushDeliveryReceipt(Database.Base):
+    """Per-installation durable acknowledgement for retry-safe multi-device fanout."""
+
+    __tablename__ = "native_push_delivery_receipts"
+
+    uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    ledger_uid = Column(UUID(as_uuid=True), ForeignKey("external_delivery_ledger.uid", ondelete="CASCADE"), nullable=False)
+    device_uid = Column(UUID(as_uuid=True), ForeignKey("native_push_devices.uid", ondelete="CASCADE"), nullable=False)
+    status = Column(String(16), nullable=False, default="pending")
+    provider_message_id = Column(String(180), nullable=True)
+    failure_class = Column(String(80), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("ledger_uid", "device_uid", name="uq_native_push_ledger_device"),
+        Index("ix_native_push_receipt_ledger_status", "ledger_uid", "status"),
+    )
+
+
 class UserNotification(Database.Base):
     __tablename__ = "user_notifications"
 
