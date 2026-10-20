@@ -1,6 +1,6 @@
 # Живой статус реализации PubChat: Web / Android / iOS
 
-> Срез подтверждён **19 октября 2026 г.** по состоянию репозиториев и GitHub PR/Issues. Эта таблица — **реестр реализованных пользовательских сценариев**, а не обещание готовности 1.0. При каждом изменении сначала сверять актуальные ветки и PR. История релизов — в [CHANGELOG](../CHANGELOG.md), план — в [roadmap](roadmap.md).
+> Срез исходной матрицы подтверждён **19 октября 2026 г.**; уточнения по Push и Moderation внесены **20 октября 2026 г.** по состоянию репозиториев и GitHub PR/Issues. Эта таблица — **реестр реализованных пользовательских сценариев**, а не обещание готовности 1.0. При каждом изменении сначала сверять актуальные ветки и PR. История релизов — в [CHANGELOG](../CHANGELOG.md), план — в [roadmap](roadmap.md).
 
 ## Источники и принципы
 
@@ -28,7 +28,7 @@
 | **E2EE DM** | Web E2EE policy + HTTP no-downgrade [#131](https://github.com/cyrox007/PubChat/pull/131), `8e5219e` | **No-downgrade [Android #58](https://github.com/cyrox007/PubChat-Android/pull/58) слит** `103ecb1`; **crypto-device foundation [#60](https://github.com/cyrox007/PubChat-Android/pull/60) слита, `4715e69`, CI Android enabled/disabled green**, генерирует Ed25519/X25519/signed/one-time prekeys, Keystore storage, explicit server register/revoke; E2EE send/decrypt **НЕТ** ([#59](https://github.com/cyrox007/PubChat-Android/issues/59)) | Native E2EE не реализован | **P0 security blocker**: X3DH-style 3DH/HKDF sessions, device-directory trust, AEAD encryption/ratchet/decrypt, attachments, physical interoperability and security review |
 | **Safety Center**: жалобы, история, ограничения, апелляции | Web + Trust & Safety API | Нет полного пользовательского flow | Нет полного flow | **P0 safety blocker** |
 | Сессии и устройства | Web + Identity API | Нет полноценного editor | Нет полноценного device revoke | Список и отзыв сессий, после-revoke поведение |
-| Уведомления и доставочные настройки | Web Push/preferences | Центр + FCM foundation, неполные controls | Базовая активность, APNs отсутствует | Серверная конфигурация и реальные push-device тесты |
+| Уведомления и доставочные настройки | Web Push/preferences; фоновая персональная доставка DM/Space reply [#155](https://github.com/cyrox007/PubChat/pull/155) | FCM foundation; отдельные Android sound channels, device QA не подтверждён | APNs клиентский opt-in/token/sounds [iOS #24](https://github.com/cyrox007/PubChat-iOS/pull/24); backend APNs [#157](https://github.com/cyrox007/PubChat/pull/157) | Серверные исправления receipts [#159](https://github.com/cyrox007/PubChat/pull/159) и конфликтующих маршрутов [#160](https://github.com/cyrox007/PubChat/pull/160) слиты; production credentials, rollout и физические испытания остаются P0 [#158](https://github.com/cyrox007/PubChat/issues/158) |
 | Реальные device E2E | Browser coverage | Не подтверждена полная физическая матрица | Симулятор ≠ реальный iPhone | P0 перед 1.0 |
 
 **Не маркировать «создание Space отсутствует» на Android.** Уже реализован полноценный API-backed Compose flow. Однако реализация в коде и CI green **не означают** физическую приёмку.
@@ -50,7 +50,7 @@
 
 | Сценарий | Backend/Web | Android | iOS | Что остаётся |
 | --- | --- | --- | --- | --- |
-| Управляемые слова/фразы, словоформы, обходы и исключения | **План [#145](https://github.com/cyrox007/PubChat/issues/145), [#146](https://github.com/cyrox007/PubChat/issues/146)**. Существующий AI-copilot работает только после report claim | Будущие server-backed rejection/masking UI | Аналогично | Единый server matcher, admin preview, проверка всех plaintext write paths и delivery surfaces |
+| Управляемые слова/фразы, словоформы, обходы и исключения | **Редактор правил [#145](https://github.com/cyrox007/PubChat/issues/145) реализован и слит [PR #154](https://github.com/cyrox007/PubChat/pull/154)**: версии, RBAC, simulation, shadow. Enforcement во всех plaintext путях **ещё не подтверждён**: [#146](https://github.com/cyrox007/PubChat/issues/146). Существующий AI-copilot работает после report claim | Будущие server-backed rejection/masking UI | Аналогично | Единый server matcher, admin preview, проверка всех plaintext write paths и delivery surfaces |
 | Пожаловаться из конкретного сообщения + контекст | **Report API существует**, но evidence `reported_message_only`; [context #147](https://github.com/cyrox007/PubChat/issues/147) **НЕ готов** | Требуется report-button/контекстный UX | Требуется report-button/контекстный UX | Bounded case evidence, separate DM privilege, retention/audit |
 | E2EE DM report | Ciphertext не доступен для server-side lexicon | Запланировано добровольное disclosure [#148](https://github.com/cyrox007/PubChat/issues/148) | То же | Никакого server E2EE backdoor; only reporter-selected evidence |
 | Фото, граффити, посты, комментарии, видео/аудио, Stories, Reels | **Будущая медиаплатформа [#134](https://github.com/cyrox007/PubChat/issues/134)** + scan OCR/ASR/AI [#149](https://github.com/cyrox007/PubChat/issues/149) | Будущие report/media-review UI | Будущие report/media-review UI | S3 quarantine, rights, published content must pass review/visibility |
@@ -60,7 +60,15 @@
 
 ### Шаг #145 в Unified Moderation v2
 
-Admin/server: функциональная работа по [#145](https://github.com/cyrox007/PubChat/issues/145) — версионируемые словари, API, предпросмотр, аудит и off/shadow **не означают**, что существующие пользовательские сообщения подвергаются цензуре. Реальный gate [#146](https://github.com/cyrox007/PubChat/issues/146) должен быть подключён во все plaintext send/edit paths с отдельной CI/QA. E2EE не подлежит серверному чтению. Отчёт о принятии PR/CI будет отражён в Epic и issue только после merge.
+Admin/server: [PR #154](https://github.com/cyrox007/PubChat/pull/154), merge [`89293c46`](https://github.com/cyrox007/PubChat/commit/89293c46f6145f1d6048238a6c6874c6886cec4c), реализует [#145](https://github.com/cyrox007/PubChat/issues/145) — версионируемые словари, API, предпросмотр, аудит и off/shadow. Это **не означает**, что существующие пользовательские сообщения подвергаются цензуре. Реальный gate [#146](https://github.com/cyrox007/PubChat/issues/146) должен быть подключён во все plaintext send/edit paths с отдельной CI/QA. E2EE не подлежит серверному чтению. Отчёт о принятии PR/CI будет отражён в Epic и issue только после merge.
+
+
+## Операционная приёмка Push — дополнение 20.10.2026
+
+- Слиты backend [#155](https://github.com/cyrox007/PubChat/pull/155), [#157](https://github.com/cyrox007/PubChat/pull/157), [#159](https://github.com/cyrox007/PubChat/pull/159), [#160](https://github.com/cyrox007/PubChat/pull/160). Наличие реализаций не подтверждает доставку OS на реальном устройстве.
+- [P0 #158](https://github.com/cyrox007/PubChat/issues/158) остаётся открытым: установить exact merged SHA, применить миграции, подтвердить раздельные FCM/APNs/VAPID credentials, timers/workers, readiness API и фактические уведомления Android/iPhone/Web с двух Account в фоне, при блокировке экрана, после offline и при нескольких устройствах.
+- iOS [PR #24](https://github.com/cyrox007/PubChat-iOS/pull/24) добавляет клиентскую APNs основу; отсутствие физических TestFlight/Android испытаний не заменяется simulator/CI.
+- Следующий server-side этап по модерации — [#146](https://github.com/cyrox007/PubChat/issues/146), с отдельным контролем обходов через HTTP, WebSocket и edit. Поверх этого — [#147](https://github.com/cyrox007/PubChat/issues/147), [#151](https://github.com/cyrox007/PubChat/issues/151), затем сквозная приёмка [#152](https://github.com/cyrox007/PubChat/issues/152). E2EE plaintext на сервер не отправлять для автоматического просмотра.
 
 ## Приоритеты после текущих PR
 
