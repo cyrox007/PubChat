@@ -13,7 +13,7 @@ from components.notification.native_push import (
 
 class NativePushReceiptContractTests(unittest.TestCase):
     def test_receipt_models_track_target_without_message_text(self):
-        cols = set(NativePushDeliveryReceipt.__table__.c)
+        cols = set(NativePushDeliveryReceipt.__table__.c.keys())
         self.assertTrue({"ledger_uid", "device_uid", "status", "provider_message_id", "failure_class"} <= cols)
         for forbidden in ("message_text", "content", "ciphertext", "sender", "token", "access_token"):
             self.assertNotIn(forbidden, cols)
