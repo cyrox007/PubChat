@@ -21,6 +21,7 @@ from components.notification.model import (
 )
 from components.notification.schemas import WebPushSubscriptionUpsertRequest
 from components.notification.unread_dm_email import _eligible_unread_summary, utc_naive
+from components.notification.space_reply_delivery import space_reply_claim_payload
 from components.realtime import realtime_service
 from settings import config
 from utils.logger import setup_logger
@@ -45,6 +46,7 @@ class PushDeliveryClaim:
     account_uid: UUID
     token: str
     attempt_count: int
+    aggregate_key: str
 
 
 @dataclass
@@ -348,6 +350,7 @@ async def _claim_one(db: AsyncSession, now: datetime) -> PushDeliveryClaim | Non
         account_uid=UUID(str(row.account_uid)),
         token=token,
         attempt_count=row.attempt_count,
+        aggregate_key=row.aggregate_key,
     )
     await db.commit()
     return claim
@@ -462,20 +465,22 @@ async def run_web_push_delivery_worker(
         stats.claimed += 1
 
         try:
-            if await realtime_service.is_online(claim.account_uid):
-                async with session_factory() as db:
-                    await _finish_claim(db, claim, status="suppressed", now=current, failure="online_before_push")
-                stats.suppressed += 1
-                continue
-
+            # A backgrounded tab retains its websocket connection; online
+            # presence is NOT evidence that the user is viewing PubChat.
+            is_reply = claim.aggregate_key.startswith("space-reply:")
             async with session_factory() as db:
                 preference = await db.get(MessageNotificationPreference, claim.account_uid)
-                if not preference or not preference.web_push_messenger:
-                    await _finish_claim(db, claim, status="suppressed", now=current, failure="web_push_opt_out")
-                    stats.suppressed += 1
-                    continue
-                if await _eligible_unread_summary(db, claim.account_uid) is None:
-                    await _finish_claim(db, claim, status="suppressed", now=current, failure="no_eligible_unread_dm")
+                permitted = preference and (
+                    preference.web_push_space if is_reply else preference.web_push_messenger
+                )
+                payload_for_claim = (
+                    await space_reply_claim_payload(db, claim.aggregate_key, claim.account_uid)
+                    if is_reply else
+                    (build_messenger_push_payload()
+                     if await _eligible_unread_summary(db, claim.account_uid) is not None else None)
+                )
+                if not permitted or payload_for_claim is None:
+                    await _finish_claim(db, claim, status="suppressed", now=current, failure="push_opt_out_or_event_read")
                     stats.suppressed += 1
                     continue
                 targets = await _subscription_targets(db, claim.account_uid)
@@ -489,10 +494,9 @@ async def run_web_push_delivery_worker(
             delivered = 0
             retryable_failure = False
             last_failure = "push_delivery_failed"
-            payload = build_messenger_push_payload()
             for target in targets:
                 try:
-                    await provider.send(target, payload)
+                    await provider.send(target, payload_for_claim)
                     delivered += 1
                 except WebPushProviderError as exc:
                     last_failure = exc.failure_class
