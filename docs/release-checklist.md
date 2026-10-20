@@ -13,7 +13,8 @@
 - browser-sensitive slice проходит Playwright Chromium/Firefox/WebKit/mobile gate;
 - privacy/permissions/data self-review завершён;
 - пользовательская и техническая документация обновлена;
-- CI зелёный на exact functional head.
+- CI зелёный на exact functional head;
+- если срез затрагивает Posts/Stories/Reels/S3: проверены реальные S3-compatible provider + quota reservation/reconciliation, private/public ACL, права/модерация медиа, просроченные Stories, revocation/cached URL и cross-client code/CI/device states из [Social Content & Media v1](social-content-media-platform-v1.md); до готовности endpoint недоступен публично или находится под feature flag.
 
 ## Versioned gate
 
@@ -37,5 +38,7 @@
 - если email/Web Push delivery включены — проверить `python -m workers.external_delivery_observability --window-hours 24 --require-healthy` и разобрать stale backlog/expired claims до открытия трафика;
 
 Clean-database migration CI не заменяет backup/restore drill и rehearsal на legacy data перед реальным production deployment.
+
+**1.0 Social Content gate (запланированный объём):** готовность текст/фото/mixed/graffiti/video/audio Posts, personal wall, feed, Stories и Reels оценивается по одинаковым server-authorized пользовательским сценариям на Web/Android/iOS, real-device QA и устойчивой стоимости object storage/CDN. Наличие ТЗ не является выполнением release gate.
 
 Переход alpha → beta → stable зависит от readiness gate, а не даты или числа commits.
