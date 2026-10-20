@@ -204,8 +204,9 @@ const exportRules = async () => {
 const compareRevision = async () => {
   try {
     const base = (await ModerationService.lexiconRevision(policy.value.active_revision)).data.revision.rules || [];
-    const before = new Map(base.map(x => [x.uid, JSON.stringify(x)]));
-    const after = new Map(wireRules().map(x => [x.uid, JSON.stringify(x)]));
+    const stable = x => JSON.stringify(Object.keys(x).sort().map(key => [key, x[key]]));
+    const before = new Map(base.map(x => [x.uid, stable(x)]));
+    const after = new Map(wireRules().map(x => [x.uid, stable(x)]));
     const added = [...after.keys()].filter(id => !before.has(id)).length;
     const removed = [...before.keys()].filter(id => !after.has(id)).length;
     const changed = [...after.keys()].filter(id => before.has(id) && before.get(id) !== after.get(id)).length;
