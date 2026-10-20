@@ -87,5 +87,6 @@ class LexiconActivate(BaseModel):
 class LexiconSimulate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(max_length=MAX_TEXT_CHARS)
+    surface: LexiconSurface = "space_chat"
     revision: int | None = Field(default=None, ge=0)
     rules: list[LexiconRuleInput] | None = Field(default=None, max_length=MAX_RULES)
