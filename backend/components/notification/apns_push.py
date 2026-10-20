@@ -97,7 +97,7 @@ class APNsProvider:
                 "title": "Ответ в пространстве PubChat" if is_reply else "Новое сообщение PubChat",
                 "body": "Ответили на ваше сообщение." if is_reply else "У вас есть новое личное сообщение.",
             },
-            "sound": "pubchat_space.caf" if is_reply else "pubchat_private.caf",
+            "sound": "pubchat_space.wav" if is_reply else "pubchat_private.wav",
             "thread-id": "pubchat-space-replies" if is_reply else "pubchat-messenger",
         }
         # Client falls back to OS default sound if a custom file is not packaged.
