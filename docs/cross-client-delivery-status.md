@@ -58,6 +58,10 @@
 
 Каноническое ТЗ [`unified-content-moderation-v2.md`](unified-content-moderation-v2.md), [Epic #144](https://github.com/cyrox007/PubChat/issues/144). **Ни один Planned пункт не становится code-complete из-за документа.** Существующий нативный E2EE/Safety Center P0 остаётся открытым.
 
+### Шаг #145 в Unified Moderation v2
+
+Admin/server: функциональная работа по [#145](https://github.com/cyrox007/PubChat/issues/145) — версионируемые словари, API, предпросмотр, аудит и off/shadow **не означают**, что существующие пользовательские сообщения подвергаются цензуре. Реальный gate [#146](https://github.com/cyrox007/PubChat/issues/146) должен быть подключён во все plaintext send/edit paths с отдельной CI/QA. E2EE не подлежит серверному чтению. Отчёт о принятии PR/CI будет отражён в Epic и issue только после merge.
+
 ## Приоритеты после текущих PR
 
 1. **P0: Space invitations acceptance** — Android [#56](https://github.com/cyrox007/PubChat-Android/pull/56) **слит** в `master`, `07cae34`, обе CI-конфигурации green. Нужны реальные Android устройства, blocked/private/expired/revoked/invite-only и Web↔Android cross-client тесты. Далее — недостающий iOS flow. Не повторять Android Create Space и invitation inbox.
