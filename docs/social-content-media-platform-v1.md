@@ -71,6 +71,10 @@ PubChat должен предоставлять личную стену/микр
 
 `Reel` — короткое вертикальное видео с автором Persona, описанием, poster, duration, sound/license metadata, moderation status, public URL и feed engagement. Общий транскодер + multi-rendition streaming, limited prefetch/bandwidth, captions/accessibility/reduced motion, безопасное автопроигрывание. Swipe-клиент работает через cursor API и не делает бесконечные выборки. Рекомендации строятся только после privacy filtering. Remix/duet/использование чужой музыки допустимо только при явном rights/consent contract, не подразумевается.
 
+## Сквозная модерация всех типов социального контента — обязательная зависимость
+
+[Unified Content Moderation v2](unified-content-moderation-v2.md), [Epic #144](https://github.com/cyrox007/PubChat/issues/144): до публичного запуска постов, фотографий, граффити, клипов/видео/музыки, Stories и Reels сервер должен выполнять управляемую проверку подписей/комментариев/запрещённых фраз, карантин/скан/OCR/ASR/AI triage и иметь пожаловаться/разбор/appeal. [#149 мультимодальные сканы](https://github.com/cyrox007/PubChat/issues/149) и [#147 жалобы с контекстом](https://github.com/cyrox007/PubChat/issues/147) входят в матрицу приёмки [#142](https://github.com/cyrox007/PubChat/issues/142). **План, пока не реализовано.** OCR/ASR false-positives требуют human override; S3/quota publish state не должен опережать moderation gate.
+
 ## 5. Безопасность, авторские права и модерация
 
 - Загрузка любого медиа проходит allowlist+content sniff, size check, decode limits/anti-bomb, scan/quarantine, rate-limit, строгую обработку ошибок provider/worker. SVG/active HTML, подозрительные архивы и исполняемые вложения не включаются автоматически.

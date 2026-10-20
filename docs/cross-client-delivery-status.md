@@ -46,6 +46,18 @@
 
 **Важно:** это согласованный план [Epic #134](https://github.com/cyrox007/PubChat/issues/134) и [ТЗ](social-content-media-platform-v1.md), **не существующие API/экраны**. Требуются подтверждённые code/CI/device acceptance [#142](https://github.com/cyrox007/PubChat/issues/142). Уже открытые P0 в разделах выше остаются ближайшими security/safety задачами.
 
+## Новый ожидаемый контур автомодерации (PLANNED — 20.10.2026)
+
+| Сценарий | Backend/Web | Android | iOS | Что остаётся |
+| --- | --- | --- | --- | --- |
+| Управляемые слова/фразы, словоформы, обходы и исключения | **План [#145](https://github.com/cyrox007/PubChat/issues/145), [#146](https://github.com/cyrox007/PubChat/issues/146)**. Существующий AI-copilot работает только после report claim | Будущие server-backed rejection/masking UI | Аналогично | Единый server matcher, admin preview, проверка всех plaintext write paths и delivery surfaces |
+| Пожаловаться из конкретного сообщения + контекст | **Report API существует**, но evidence `reported_message_only`; [context #147](https://github.com/cyrox007/PubChat/issues/147) **НЕ готов** | Требуется report-button/контекстный UX | Требуется report-button/контекстный UX | Bounded case evidence, separate DM privilege, retention/audit |
+| E2EE DM report | Ciphertext не доступен для server-side lexicon | Запланировано добровольное disclosure [#148](https://github.com/cyrox007/PubChat/issues/148) | То же | Никакого server E2EE backdoor; only reporter-selected evidence |
+| Фото, граффити, посты, комментарии, видео/аудио, Stories, Reels | **Будущая медиаплатформа [#134](https://github.com/cyrox007/PubChat/issues/134)** + scan OCR/ASR/AI [#149](https://github.com/cyrox007/PubChat/issues/149) | Будущие report/media-review UI | Будущие report/media-review UI | S3 quarantine, rights, published content must pass review/visibility |
+| AI moderation console | **Advisory AI copilot уже есть**; новая orchestration/UI [#150](https://github.com/cyrox007/PubChat/issues/150), [#151](https://github.com/cyrox007/PubChat/issues/151) запланирована | Safety Center status remains incomplete | Safety Center status remains incomplete | Shadow calibration, no punitive AI bypass, reviewer context and privacy [#152](https://github.com/cyrox007/PubChat/issues/152) |
+
+Каноническое ТЗ [`unified-content-moderation-v2.md`](unified-content-moderation-v2.md), [Epic #144](https://github.com/cyrox007/PubChat/issues/144). **Ни один Planned пункт не становится code-complete из-за документа.** Существующий нативный E2EE/Safety Center P0 остаётся открытым.
+
 ## Приоритеты после текущих PR
 
 1. **P0: Space invitations acceptance** — Android [#56](https://github.com/cyrox007/PubChat-Android/pull/56) **слит** в `master`, `07cae34`, обе CI-конфигурации green. Нужны реальные Android устройства, blocked/private/expired/revoked/invite-only и Web↔Android cross-client тесты. Далее — недостающий iOS flow. Не повторять Android Create Space и invitation inbox.

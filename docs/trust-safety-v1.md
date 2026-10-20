@@ -2,6 +2,12 @@
 
 Этот документ фиксирует целевую модель модерации PubChat для Stage 6.8. Она расширяет существующие Space-local `ModerationReport` / `ModerationAction` / `ModerationAppeal` и platform Trust & Safety queue, но не смешивает локальные полномочия Space с глобальной властью платформы.
 
+## Расширение roadmap: Unified Content Moderation v2 (план, 20.10.2026)
+
+[Новое ТЗ](unified-content-moderation-v2.md), [Epic #144](https://github.com/cyrox007/PubChat/issues/144). Пользовательская потребность — управляемые словари/формы/вариации запретных фраз с маскировкой/отказом, server-side проверка всего публикуемого **plaintext** и медиа, кнопка жалобы непосредственно из сообщения, модераторский bounded context, безопасное participant-disclosed evidence для E2EE, AI/OCR/ASR мультимодальная очередь и удобное управление правилами.
+
+**Это не реализовано существующим copilot checkpoint.** Existing `/trust-safety/v1/reports` работает для `persona/messenger_message/space_message`, claimed evidence `reported_message_only`; соседний контекст для DM и Space, отдельные rulesets и автоматическая медиа-проверка будущих Posts/Stories/Reels требуют задач [#145–#152](https://github.com/cyrox007/PubChat/issues/144). Уже действующие authority, audit, AI outcome/appeal, медиа quarantine и default-off protective holds не ослаблять. Запрет доступа модератора к произвольной E2EE/DM history является архитектурным invariant.
+
 ## Основная идея
 
 Модерация PubChat состоит из трёх отдельных частей:

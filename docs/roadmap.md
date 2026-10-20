@@ -30,6 +30,14 @@ Android [`cyrox007/PubChat-Android`](https://github.com/cyrox007/PubChat-Android
 
 **Порядок:** [#135 storage/quotas](https://github.com/cyrox007/PubChat/issues/135) → [#136 posts/wall](https://github.com/cyrox007/PubChat/issues/136) → [#137 home feed](https://github.com/cyrox007/PubChat/issues/137); затем [#138 graffiti](https://github.com/cyrox007/PubChat/issues/138), [#139 video/music](https://github.com/cyrox007/PubChat/issues/139), [#140 Stories](https://github.com/cyrox007/PubChat/issues/140), [#141 Reels](https://github.com/cyrox007/PubChat/issues/141) и [#142 cross-client acceptance](https://github.com/cyrox007/PubChat/issues/142). Разработка по API vertical slices, а не по разрозненным экранам. Уже открытые P0 (native E2EE, Safety Center) остаются P0 и не закрываются добавлением этого scope.
 
+## Новый продуктовый трек: управляемая цензура и сквозная модерация контента (решение 20.10.2026)
+
+**Новый ожидаемый функционал, ещё не реализован.** [Unified Content Moderation v2](unified-content-moderation-v2.md) и [Epic #144](https://github.com/cyrox007/PubChat/issues/144) расширяют уже существующие AI-copilot/Trust & Safety. Цель — **единые серверные правила для всех доступных платформе plaintext-публикаций**, без обхода через HTTP, WebSocket, редактирование и цитирование. Набор инструментов: [#145 словари с морфологией, вариациями и исключениями](https://github.com/cyrox007/PubChat/issues/145) → [#146 server preflight](https://github.com/cyrox007/PubChat/issues/146), категории, маскировка/отказ/карантин, UI-симулятор, dry-run/rollback, audit, false-positive calibration.
+
+**Контекст жалобы** — отдельный workstream [#147](https://github.com/cyrox007/PubChat/issues/147): кнопка на конкретном Space/DM сообщении + неизменяемое case evidence + ограниченный контекст с RBAC, не доступ к любым чужим перепискам. Для E2EE [#148](https://github.com/cyrox007/PubChat/issues/148) только **добровольное раскрытие заявителем выбранных расшифрованных сообщений**; сервер не читает E2EE ciphertext. Новая мультимодальная модерация [#149](https://github.com/cyrox007/PubChat/issues/149) связана с Social Content [#134](https://github.com/cyrox007/PubChat/issues/134): фото, граффити, видео, аудио, Stories/Reels, OCR/ASR, права и S3 quarantine. AI orchestration [#150](https://github.com/cyrox007/PubChat/issues/150), рабочая панель [#151](https://github.com/cyrox007/PubChat/issues/151), межклиентная/приватная приёмка [#152](https://github.com/cyrox007/PubChat/issues/152).
+
+**Последовательность:** сначала reusable rules/preflight для чатов и plaintext контента, затем корректные жалобы с контекстом и доказательствами, потом интеграция в uploads/posts/stories/reels **до публичного включения новых медиа**. Платформенный human moderator сохраняет право тяжёлых решений; LLM не получает право автоматических серьёзных санкций. Существующие P0 native E2EE/Safety Center продолжаются — этот трек дополняет их.
+
 ## Текущий статус
 
 Последний документированный **`0.6.x` checkpoint — `0.6.30-alpha.1`** (см. CHANGELOG). Далее в `main` уже включены продуктовые срезы Social Core и Spaces; нельзя считать последний номер checkpoint состоянием всех функций клиента.
@@ -453,6 +461,9 @@ Beta назначается только когда launch-critical journeys р�
 - Platform queue access не означает право на sanction actions: issue/revoke/appeal review разделены explicit permissions и authority checks.
 - `account.access` является elevated platform-only capability; он не отменяет право пользователя увидеть причину и подать appeal.
 - AI moderation не является источником punitive authority в beta baseline.
+- Deterministic profanity/phrase policy and AI scan never widen Account authority or read secret E2EE message plaintext; participant-disclosed E2EE evidence requires informed consent.
+- Moderator evidence is case-bound: reported source and least necessary authorized context, no unrestricted DM history or hidden decryption.
+- No post/Story/Reel/media becomes publicly available before the configured quarantine/scan/permission gates pass.
 - Communication quality first; никакой тюремной терминологии.
 - SPA — первый клиент, contracts reusable для Android/iOS.
 
