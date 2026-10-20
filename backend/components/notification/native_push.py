@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from components.notification.model import ExternalDeliveryLedger, MessageNotificationPreference, NativePushDevice
 from components.notification.schemas import NativePushDeviceUpsertRequest
 from components.notification.unread_dm_email import _eligible_unread_summary, utc_naive
+from components.notification.space_reply_delivery import space_reply_claim_payload
 from components.realtime import realtime_service
 from utils.logger import setup_logger
 
@@ -94,6 +95,7 @@ class NativePushClaim:
     account_uid: UUID
     token: str
     attempt_count: int
+    aggregate_key: str
 
 
 @dataclass
@@ -288,7 +290,10 @@ class FCMProvider:
                 "data": {key: str(value) for key, value in payload.items() if key not in {"title", "body"}},
                 "android": {
                     "priority": "high",
-                    "notification": {"tag": payload.get("tag", "pubchat")},
+                    "notification": {
+                        "tag": payload.get("tag", "pubchat"),
+                        "channel_id": ("pubchat_space_replies_chime_v2" if payload.get("type") == "space_reply" else "pubchat_messages_chime_v2"),
+                    },
                 },
             }
         }
@@ -360,7 +365,8 @@ async def queue_native_push_for_unread(db: AsyncSession, *, now: datetime, limit
         if recent.scalar_one_or_none() is not None:
             continue
         aggregate_key = f"unread-dm:{summary.latest_message_uid}"
-        dedupe_key = f"{aggregate_key}:slot:{_cooldown_slot(current)}"
+        # Do not send the same old unread message on every cooldown window.
+        dedupe_key = aggregate_key
         statement = (
             insert(ExternalDeliveryLedger)
             .values(
@@ -417,7 +423,7 @@ async def _claim_one(db: AsyncSession, now: datetime) -> NativePushClaim | None:
     row.attempt_count = int(row.attempt_count or 0) + 1
     row.attempted_at = current
     row.updated_at = current
-    claim = NativePushClaim(UUID(str(row.uid)), UUID(str(row.account_uid)), token, row.attempt_count)
+    claim = NativePushClaim(UUID(str(row.uid)), UUID(str(row.account_uid)), token, row.attempt_count, row.aggregate_key)
     await db.commit()
     return claim
 
@@ -528,16 +534,22 @@ async def run_native_push_worker(
             break
         stats.claimed += 1
 
-        if await realtime_service.is_online(claim.account_uid):
-            async with session_factory() as db:
-                await _finish(db, claim, state="suppressed", now=current, failure="online_before_native_push")
-            stats.suppressed += 1
-            continue
-
+        # WebSocket presence survives while a native app sits in the background:
+        # presence alone must never suppress the operating-system push.
+        is_reply = claim.aggregate_key.startswith("space-reply:")
         async with session_factory() as db:
             preference = await db.get(MessageNotificationPreference, claim.account_uid)
             targets = await _targets(db, claim.account_uid)
-        if not preference or not preference.native_push_messenger or not targets:
+            payload_for_claim = (
+                await space_reply_claim_payload(db, claim.aggregate_key, claim.account_uid)
+                if is_reply else
+                (build_messenger_native_push_payload()
+                 if await _eligible_unread_summary(db, claim.account_uid) is not None else None)
+            )
+        permitted = preference and (
+            preference.native_push_space if is_reply else preference.native_push_messenger
+        )
+        if not permitted or not targets or payload_for_claim is None:
             async with session_factory() as db:
                 await _finish(db, claim, state="suppressed", now=current, failure="native_push_opt_out_or_no_device")
             stats.suppressed += 1
@@ -548,7 +560,7 @@ async def run_native_push_worker(
         permanent_failure: NativePushProviderError | None = None
         for target in targets:
             try:
-                provider_id = await provider.send(target, payload)
+                provider_id = await provider.send(target, payload_for_claim)
                 delivered_ids.append(provider_id)
             except NativePushProviderError as exc:
                 if exc.terminal_device:
