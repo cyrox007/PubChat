@@ -55,6 +55,14 @@ Native push reuses `external_delivery_ledger` with channel `native_push`. The wo
 
 The systemd timer runs the worker every ~30 seconds. Multiple overlapping workers remain safe because durable claims are leased and row-locked.
 
+## Multi-device delivery receipts and partial-provider recovery
+
+Migration `z4p8r2t33003` adds `native_push_delivery_receipts`, keyed by immutable Account-level ledger UID plus native installation UID. Each successful OS-provider acknowledgement is stored **before** the Account's push record is marked `delivered`. If phone A succeeds but phone B's provider times out, the ledger retries B after bounded backoff **without sending a duplicate notification to A**. Token-revocation and permanent-provider failures are stored as terminal for that device; successful deliveries are never downgraded.
+
+This addresses the previous partial fan-out loss under mixed FCM/APNs or multiple Android/iPhone installations. If a provider accepts an alert but the worker crashes before writing its receipt, an at-least-once retry can still duplicate that OS notification; the OS provider uses stable conversation/room collapse tags to reduce duplicate display. Exact-once physical delivery cannot be guaranteed on unreliable networks. The worker remains fail-safe if an Account's unread message has been marked read or a Space reply has lost permission by the time of retry.
+
+The migration **must** be applied before starting the updated worker. Operator metrics can inspect `native_push_delivery_receipts` without raw device tokens or message contents, joined by ledger/installation UUID. Do not bypass configured user preferences/notification permission.
+
 ## E2EE / privacy boundary
 
 Native push is deliberately content-blind. Its Messenger payload is always generic:

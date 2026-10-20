@@ -17,7 +17,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from components.notification.model import ExternalDeliveryLedger, MessageNotificationPreference, NativePushDevice
+from components.notification.model import ExternalDeliveryLedger, MessageNotificationPreference, NativePushDevice, NativePushDeliveryReceipt
 from components.notification.schemas import NativePushDeviceUpsertRequest
 from components.notification.unread_dm_email import _eligible_unread_summary, utc_naive
 from components.notification.space_reply_delivery import space_reply_claim_payload
@@ -500,6 +500,51 @@ async def _targets(db: AsyncSession, account_uid: UUID) -> list[NativePushTarget
     return [NativePushTarget(UUID(str(item.uid)), item.token, item.provider, item.platform) for item in result.scalars().all()]
 
 
+async def _receipt_status(db: AsyncSession, ledger_uid: UUID, device_uid: UUID) -> str | None:
+    return (await db.execute(
+        select(NativePushDeliveryReceipt.status).where(
+            NativePushDeliveryReceipt.ledger_uid == ledger_uid,
+            NativePushDeliveryReceipt.device_uid == device_uid,
+        ).limit(1)
+    )).scalar_one_or_none()
+
+
+async def _mark_receipt(
+    db: AsyncSession, claim: NativePushClaim, device_uid: UUID, *,
+    status: str, provider_id: str | None = None, failure: str | None = None,
+) -> bool:
+    """Persist one device result before the Account ledger can be marked delivered.
+
+    Stale workers cannot modify a receipt after their lease token was replaced.
+    Success is never downgraded by a late retry.
+    """
+    if status not in {"delivered", "terminal"}:
+        raise ValueError("Unsupported terminal native push receipt state")
+    if await _claimed_row(db, claim) is None:
+        await db.rollback()
+        return False
+    record = (await db.execute(
+        select(NativePushDeliveryReceipt).where(
+            NativePushDeliveryReceipt.ledger_uid == claim.uid,
+            NativePushDeliveryReceipt.device_uid == device_uid,
+        ).with_for_update().limit(1)
+    )).scalar_one_or_none()
+    if record is None:
+        record = NativePushDeliveryReceipt(
+            ledger_uid=claim.uid, device_uid=device_uid, status=status,
+            provider_message_id=provider_id[:180] if provider_id else None,
+            failure_class=failure[:80] if failure else None,
+        )
+        db.add(record)
+    elif record.status != "delivered":
+        record.status = status
+        record.provider_message_id = provider_id[:180] if provider_id else None
+        record.failure_class = failure[:80] if failure else None
+        record.updated_at = datetime.utcnow()
+    await db.commit()
+    return True
+
+
 async def _revoke_terminal_device(session_factory: async_sessionmaker[AsyncSession], uid: UUID) -> None:
     async with session_factory() as db:
         result = await db.execute(select(NativePushDevice).where(NativePushDevice.uid == uid).limit(1))
@@ -564,33 +609,56 @@ async def run_native_push_worker(
             stats.suppressed += 1
             continue
 
-        delivered_ids: list[str] = []
         retryable_failure: NativePushProviderError | None = None
         permanent_failure: NativePushProviderError | None = None
         for target in targets:
+            async with session_factory() as db:
+                already = await _receipt_status(db, claim.uid, target.uid)
+            if already in {"delivered", "terminal"}:
+                continue
             try:
                 provider_id = await provider.send(target, payload_for_claim)
-                delivered_ids.append(provider_id)
+                async with session_factory() as db:
+                    await _mark_receipt(db, claim, target.uid, status="delivered", provider_id=provider_id)
             except NativePushProviderError as exc:
                 if exc.terminal_device:
+                    async with session_factory() as db:
+                        await _mark_receipt(db, claim, target.uid, status="terminal", failure=exc.failure_class)
                     await _revoke_terminal_device(session_factory, target.uid)
                     stats.terminal_devices_revoked += 1
                 elif exc.retryable:
                     retryable_failure = exc
                 else:
+                    async with session_factory() as db:
+                        await _mark_receipt(db, claim, target.uid, status="terminal", failure=exc.failure_class)
                     permanent_failure = exc
 
-        if delivered_ids:
-            async with session_factory() as db:
-                await _finish(db, claim, state="delivered", now=current, provider_id=delivered_ids[0])
-            stats.delivered += 1
-        elif retryable_failure:
+        # A successful delivery to phone A NEVER counts as success for phone B
+        # while B still needs a retry. Durable receipts skip A on the next run.
+        if retryable_failure:
             async with session_factory() as db:
                 retried = await _retry(db, claim, now=current, failure=retryable_failure.failure_class)
             if retried:
                 stats.retried += 1
             else:
                 stats.failed += 1
+            continue
+
+        async with session_factory() as db:
+            completed = (await db.execute(
+                select(NativePushDeliveryReceipt.status, NativePushDeliveryReceipt.provider_message_id).where(
+                    NativePushDeliveryReceipt.ledger_uid == claim.uid,
+                    NativePushDeliveryReceipt.status == "delivered",
+                ).limit(1)
+            )).first()
+        if completed:
+            async with session_factory() as db:
+                await _finish(
+                    db, claim, state="delivered", now=current,
+                    provider_id=completed[1],
+                    failure="native_push_partial_failure" if permanent_failure else None,
+                )
+            stats.delivered += 1
         else:
             failure = permanent_failure.failure_class if permanent_failure else "no_active_native_target"
             async with session_factory() as db:
