@@ -111,13 +111,14 @@ async def activate_revision(db: AsyncSession, actor_uid, payload: LexiconActivat
     return {"revision": payload.revision, "mode": payload.mode, "enforced": False}
 
 
-async def simulate_policy(db: AsyncSession, text: str, revision: int | None = None) -> dict:
+async def simulate_policy(db: AsyncSession, text: str, revision: int | None = None, rules: list | None = None) -> dict:
     state = await _state(db)
     revision = state.active_revision if revision is None else revision
     row = await db.get(ModerationLexiconRevision, revision) if revision else None
     if revision and row is None:
         raise _missing_revision()
-    return simulate_rules(text, row.rules if row else [], revision=revision, mode=state.mode)
+    selected = [rule.model_dump(mode="json") for rule in rules] if rules is not None else (row.rules if row else [])
+    return simulate_rules(text, selected, revision=revision, mode=state.mode)
 
 
 async def policy_audit(db: AsyncSession, limit: int = 50) -> list[dict]:
