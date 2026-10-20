@@ -23,6 +23,7 @@ def install(app: FastAPI) -> None:
         return {
             "status": "ok",
             "android": {"provider": "fcm", "enabled": fcm_configured()},
+            "fcm_enabled": fcm_configured(),  # backward compatibility for existing Android clients
             "ios": {"provider": "apns", "enabled": apns_configured()},
             "privacy": {"message_content_in_push": False},
         }
