@@ -67,9 +67,30 @@ The payload does **not** contain message plaintext, E2EE ciphertext, sender disp
 
 This same rule applies to both legacy/plaintext and E2EE DM rows, so enabling native notifications does not weaken Messenger E2EE.
 
-## iOS
+## iOS / APNs HTTP/2
 
-The registration schema already reserves `platform=ios`, `provider=apns`, but APNs transport is intentionally not claimed as implemented in v1. The worker provider boundary is designed so a direct APNs adapter can be added without changing Account preferences, device-registration ownership, durable ledger semantics or notification privacy.
+**Implemented in backend code (requires server deployment and Apple provisioning):**
+The *same* durable worker and lease-based retry queue routes `platform=ios, provider=apns` to Apple Push Notification service using HTTP/2, an ES256 provider JWT, Apple device token and `apns-topic`. FCM remains Android-only. The iOS app requests user permission, registers the Apple token and enables Account preferences only after the server has confirmed registration. A logged-out installation is revoked before clearing Keychain when the network allows. Generic notifications have two bundled local WAV sounds, one for new Messenger messages and another for direct Space replies; APNs payloads contain **no text, sender names, encryption keys, private links or media contents**.
+
+**Required server-only environment (none belongs in git or app code):**
+- `APNS_TEAM_ID` — Apple Developer team identifier (10 uppercase alphanumerics).
+- `APNS_KEY_ID` — APNs Auth Key identifier (10 uppercase alphanumerics).
+- `APNS_PRIVATE_KEY` — ES256 `.p8` signing key, either PEM lines or `\\n`-escaped.
+- `APNS_TOPIC` — exact iOS bundle identifier (`ru.pubchat.app` for current XcodeGen settings).
+- `APNS_ENVIRONMENT` — **`sandbox`** for developer-signed app, **`production`** for TestFlight/App Store. Tokens are environment-specific and **must never be mixed**; production is the code default.
+
+Install updated `backend/requirements.txt` (contains `httpx[http2]`) and restart the `pubchat-native-push.timer`/service after upgrading code. Existing Redis / PostgreSQL and Nginx/backend deployment prerequisites still apply. The public `GET /notifications/v1/native-push/config` (authenticated) reports `ios.enabled` according to configured credentials, but **does not prove** correct Apple provisioning, real device permission, successful delivery or sound playback.
+
+**Apple-side prerequisites:**
+1. Join Apple Developer Program, enable Push Notifications capability for App ID `ru.pubchat.app`, create APNs Auth Key and matching provisioning profiles.
+2. Build/sign a physical-device/TestFlight app with Push Notifications entitlement (`aps-environment`: development vs production), correctly set up the bundle ID and signing team.
+3. Launch, log in, open Activity → «Включить Push», grant alerts/sounds; verify server's native device list shows an iOS/APNs installation and both `native_push_messenger` and `native_push_space` are true.
+4. From a **second Account**, send a plaintext/E2EE DM (no E2EE contents in OS preview) and an addressed reply in Space. Background, lock, kill the app and repeat; check both distinct sounds unless the user has muted sound/Focus or disabled the OS channel.
+5. Check backend native push worker logs/metrics for delivered/retried/failed/terminal-device-revoked, Apple errors (BadDeviceToken, Unregistered, topic mismatch). Then read/dismiss notification, verify stale claims suppressed and no repeated OS alerts for the same message.
+6. Sign out and validate device revocation; switch accounts on the phone and verify Push cannot expose even Account A's notification state on B's installation.
+
+**Operational limitations:** APNs or FCM acknowledgement means accepted by the provider, not guaranteed display, audible sound or immediate delivery (OS restrictions, data/power saver and Focus settings apply). If server .env secrets are absent or worker timer is disabled, this feature cannot deliver to a backgrounded iPhone. Native iOS still lacks full Space message navigation and E2EE parity, so a reply tap opens the Spaces tab rather than scrolling to the exact Space message; this is a separate client parity gate.
+
 
 ## Server rollout
 
