@@ -107,7 +107,7 @@ export const enableMessengerWebPush = async () => {
 
 	try {
 		await NotificationService.registerWebPushSubscription(serializeSubscription(subscription));
-		await NotificationService.updateMessagePreferences({ web_push_messenger: true });
+		await NotificationService.updateMessagePreferences({ web_push_messenger: true, web_push_space: true });
 	} catch (error) {
 		// A just-created local subscription that the server did not accept must not
 		// linger as a misleading enabled device.
@@ -121,7 +121,7 @@ export const enableMessengerWebPush = async () => {
 export const disableMessengerWebPush = async ({ disableAccountPreference = true } = {}) => {
 	if (!isPushApiSupported()) {
 		if (disableAccountPreference) {
-			await NotificationService.updateMessagePreferences({ web_push_messenger: false });
+			await NotificationService.updateMessagePreferences({ web_push_messenger: false, web_push_space: false });
 		}
 		return;
 	}
@@ -136,7 +136,7 @@ export const disableMessengerWebPush = async ({ disableAccountPreference = true 
 		}
 	}
 	if (disableAccountPreference) {
-		await NotificationService.updateMessagePreferences({ web_push_messenger: false });
+		await NotificationService.updateMessagePreferences({ web_push_messenger: false, web_push_space: false });
 	}
 };
 
