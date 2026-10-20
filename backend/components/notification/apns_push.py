@@ -16,7 +16,10 @@ import jwt
 
 from components.notification.native_push import NativePushProviderError, NativePushTarget
 
-_APNS_HOST = "https://api.sandbox.push.apple.com" if os.getenv("APNS_ENVIRONMENT", "production").lower() == "sandbox" else "https://api.push.apple.com"
+def _apns_host() -> str:
+    """Resolve environment at delivery time; never route test tokens to production."""
+    return ("https://api.sandbox.push.apple.com" if os.getenv("APNS_ENVIRONMENT", "production").lower() == "sandbox"
+            else "https://api.push.apple.com")
 _VALID_TOKEN = re.compile(r"^[a-fA-F0-9]{32,512}$")
 _VALID_KEY_ID = re.compile(r"^[A-Z0-9]{10}$")
 _ALLOWED_TYPES = frozenset({"messenger", "space_reply"})
@@ -110,7 +113,7 @@ class APNsProvider:
                 body["room_uid"] = str(UUID(room_uid))
             except (TypeError, ValueError, AttributeError):
                 raise NativePushProviderError("apns_invalid_room", retryable=False)
-        url = f"{_APNS_HOST}/3/device/{target.token.lower()}"
+        url = f"{_apns_host()}/3/device/{target.token.lower()}"
         headers = {
             "authorization": f"bearer {self._authorization()}",
             "apns-topic": topic,
