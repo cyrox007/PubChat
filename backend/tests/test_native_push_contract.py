@@ -92,6 +92,23 @@ class NativePushContractTests(unittest.TestCase):
         self.assertTrue(response["fcm_enabled"])
         self.assertEqual(response["privacy"], {"message_content_in_push": False})
 
+    def test_missing_fcm_credentials_do_not_crash_apns_enabled_worker(self):
+        from unittest.mock import patch
+        from components.notification.native_push import (
+            FCMProvider, NativePushTarget, NativePushProviderError,
+        )
+        device = NativePushTarget(
+            uid=uuid4(), token="fcm-registration-token", provider="fcm", platform="android"
+        )
+        with patch("components.notification.native_push.fcm_configured", return_value=False), \
+             patch("components.notification.apns_push.apns_configured", return_value=True):
+            provider = FCMProvider()
+            self.assertTrue(provider.configured)
+            with self.assertRaises(NativePushProviderError) as cm:
+                provider._send_sync(device, build_messenger_native_push_payload())
+            self.assertEqual(cm.exception.failure_class, "fcm_not_configured")
+            self.assertTrue(cm.exception.retryable)
+
     def test_native_push_routes_are_installed(self):
         paths = {route.path for route in create_app().routes}
         self.assertIn("/notifications/v1/native-push/config", paths)
