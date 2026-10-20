@@ -97,6 +97,7 @@ def create_app() -> FastAPI:
     moderation_routes.install(app)
     moderation_restriction_routes.install(app)
     moderation_ai_routes.install(app)
+    moderation_lexicon_routes.install(app)
     moderation_abuse_routes.install(app)
     moderation_media_routes.install(app)
     moderation_operations_routes.install(app)
