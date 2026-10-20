@@ -50,6 +50,7 @@ async def notify_online_space_members(
     room_uid: UUID,
     sender_uid: UUID,
     formatted_message: dict,
+    exclude_uids: set[UUID] | None = None,
 ) -> None:
     """Fan out a privacy-safe alert to online members not viewing this room.
 
@@ -93,7 +94,7 @@ async def notify_online_space_members(
         for from_uid, to_uid in blocked_result.all():
             blocked_uids.add(to_uid if from_uid == sender_uid else from_uid)
 
-        candidates = [uid for uid in candidate_uids if uid not in blocked_uids]
+        candidates = [uid for uid in candidate_uids if uid not in blocked_uids and uid not in (exclude_uids or set())]
         if not candidates:
             return
 
