@@ -15,7 +15,7 @@ logger = setup_logger(__name__)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Deliver privacy-minimal native PubChat push through direct FCM HTTP v1.",
+        description="Deliver privacy-minimal native PubChat push through FCM (Android) and APNs (iOS).",
     )
     parser.add_argument(
         "--max-deliveries",
@@ -30,7 +30,7 @@ async def run(max_deliveries: int) -> int:
     ensure_models_registered()
     provider = FCMProvider()
     if not provider.configured:
-        logger.error("Direct FCM HTTP v1 credentials are not configured")
+        logger.error("Neither direct FCM nor APNs credentials are configured")
         return 2
     try:
         stats = await run_native_push_worker(
