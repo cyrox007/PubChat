@@ -72,6 +72,52 @@ class NativePushContractTests(unittest.TestCase):
         default = message_delivery_policy("messenger", online=False, active_context=False)
         self.assertFalse(default["native_push_eligible"])
 
+    def test_native_push_endpoints_are_unique_and_ios_ready(self):
+        import asyncio
+        from unittest.mock import patch
+
+        routes = create_app().routes
+        expected = {
+            ("/config", "GET"),
+            ("/devices", "GET"),
+            ("/devices", "POST"),
+            ("/devices/remove", "POST"),
+        }
+        for endpoint, method in expected:
+            matched = [
+                r for r in routes
+                if r.path == "/notifications/v1/native-push" + endpoint
+                and method in getattr(r, "methods", set())
+            ]
+            # The old router shadowed the canonical APNs/FCM endpoint.
+            self.assertEqual(len(matched), 1, (endpoint, method))
+        config_route = next(r for r in routes if r.path == "/notifications/v1/native-push/config")
+        with patch("views.notifications.native_push_routers.fcm_configured", return_value=True), \
+             patch("views.notifications.native_push_routers.apns_configured", return_value=True):
+            response = asyncio.run(config_route.endpoint(current_user={"user_uid": str(uuid4())}))
+        self.assertEqual(response["status"], "ok")
+        self.assertEqual(response["android"], {"provider": "fcm", "enabled": True})
+        self.assertEqual(response["ios"], {"provider": "apns", "enabled": True})
+        self.assertTrue(response["fcm_enabled"])
+        self.assertEqual(response["privacy"], {"message_content_in_push": False})
+
+    def test_missing_fcm_credentials_do_not_crash_apns_enabled_worker(self):
+        from unittest.mock import patch
+        from components.notification.native_push import (
+            FCMProvider, NativePushTarget, NativePushProviderError,
+        )
+        device = NativePushTarget(
+            uid=uuid4(), token="fcm-registration-token", provider="fcm", platform="android"
+        )
+        with patch("components.notification.native_push.fcm_configured", return_value=False), \
+             patch("components.notification.apns_push.apns_configured", return_value=True):
+            provider = FCMProvider()
+            self.assertTrue(provider.configured)
+            with self.assertRaises(NativePushProviderError) as cm:
+                provider._send_sync(device, build_messenger_native_push_payload())
+            self.assertEqual(cm.exception.failure_class, "fcm_not_configured")
+            self.assertTrue(cm.exception.retryable)
+
     def test_native_push_routes_are_installed(self):
         paths = {route.path for route in create_app().routes}
         self.assertIn("/notifications/v1/native-push/config", paths)

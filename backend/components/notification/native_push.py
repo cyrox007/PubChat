@@ -285,8 +285,11 @@ class FCMProvider:
     def _send_sync(self, target: NativePushTarget, payload: dict[str, str]) -> str:
         if target.provider != "fcm":
             raise NativePushProviderError("native_provider_not_implemented", retryable=False)
-        if not self.configured:
-            raise NativePushProviderError("fcm_not_configured", retryable=False)
+        # Combined worker may be ready because APNs is configured. FCM
+        # dispatch must still require its *own* credentials, or an Android
+        # target can abort the whole batch before iOS devices are processed.
+        if not fcm_configured():
+            raise NativePushProviderError("fcm_not_configured", retryable=True)
         access_token = self._oauth_token_sync()
         endpoint = f"https://fcm.googleapis.com/v1/projects/{urllib.parse.quote(_fcm_project_id(), safe='')}/messages:send"
         message = {
