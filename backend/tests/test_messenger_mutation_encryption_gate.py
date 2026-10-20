@@ -99,6 +99,29 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
             policy.assert_awaited_once_with(self.db, self.sender, self.receiver)
             persist.assert_not_awaited()
 
+    async def test_plaintext_reply_still_works_when_server_allows_it(self):
+        endpoint = self.routes[("/messages/v2/{surface}/{message_uid}/reply", "POST")]
+        created = {"uid": str(uuid4()), "content": "hello", "content_type": "text"}
+        with (
+            patch.object(message_routes, "load_message", new_callable=AsyncMock, return_value=self.source),
+            patch.object(message_routes, "ensure_message_access", new_callable=AsyncMock),
+            patch.object(message_routes, "assert_allowed", new_callable=AsyncMock),
+            patch.object(message_routes, "_dm_allowed", new_callable=AsyncMock, return_value=True),
+            patch.object(message_routes, "assert_plaintext_allowed", new_callable=AsyncMock) as policy,
+            patch.object(PrivateMessage, "create_private_message", new_callable=AsyncMock, return_value=created) as persist,
+            patch.object(message_routes.private_manager, "send_to_user", new_callable=AsyncMock) as delivery,
+        ):
+            result = await endpoint(
+                surface="messenger", message_uid=self.message_uid,
+                payload=message_routes.ReplyMessageRequest(content="hello"),
+                current_user=self.session, db=self.db,
+            )
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["message"], created)
+            policy.assert_awaited_once_with(self.db, self.sender, self.receiver)
+            persist.assert_awaited_once()
+            self.assertEqual(delivery.await_count, 2)
+
     async def test_existing_ciphertext_cannot_be_edited_or_replied_as_text(self):
         self.source.content_type = "e2ee"
         with (
