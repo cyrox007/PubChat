@@ -77,11 +77,20 @@ class NativePushContractTests(unittest.TestCase):
         from unittest.mock import patch
 
         routes = create_app().routes
-        for endpoint in ("/config", "/devices", "/devices/remove"):
-            matched = [r for r in routes if r.path == "/notifications/v1/native-push" + endpoint]
-            # Two overlapping FastAPI paths shadowed the real APNs provider and
-            # made iOS fail to decode its required "ios" capability.
-            self.assertEqual(len(matched), 1, endpoint)
+        expected = {
+            ("/config", "GET"),
+            ("/devices", "GET"),
+            ("/devices", "POST"),
+            ("/devices/remove", "POST"),
+        }
+        for endpoint, method in expected:
+            matched = [
+                r for r in routes
+                if r.path == "/notifications/v1/native-push" + endpoint
+                and method in getattr(r, "methods", set())
+            ]
+            # The old router shadowed the canonical APNs/FCM endpoint.
+            self.assertEqual(len(matched), 1, (endpoint, method))
         config_route = next(r for r in routes if r.path == "/notifications/v1/native-push/config")
         with patch("views.notifications.native_push_routers.fcm_configured", return_value=True), \
              patch("views.notifications.native_push_routers.apns_configured", return_value=True):
