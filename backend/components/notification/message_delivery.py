@@ -109,14 +109,13 @@ def message_delivery_policy(
     notify_in_app = bool(online and in_app_enabled and not active_context)
     play_sound = bool(notify_in_app and sound_enabled)
 
+    # Online status is only a WebSocket presence signal. A minimized browser
+    # or a backgrounded Android process remains online while the user is away.
+    # Email is a separate inactivity nudge; Push may be delivered while online.
     external_eligible = bool(
         surface == SURFACE_MESSENGER
-        and not online
-        and (
-            prefs["email_unread_dm_nudge"]
-            or web_push_enabled
-            or native_push_enabled
-        )
+        and (web_push_enabled or native_push_enabled
+             or (not online and prefs["email_unread_dm_nudge"]))
     )
 
     return {
@@ -132,12 +131,10 @@ def message_delivery_policy(
         ),
         "web_push_eligible": bool(
             surface == SURFACE_MESSENGER
-            and not online
             and web_push_enabled
         ),
         "native_push_eligible": bool(
             surface == SURFACE_MESSENGER
-            and not online
             and native_push_enabled
         ),
         "external_eligible": external_eligible,
