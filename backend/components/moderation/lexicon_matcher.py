@@ -18,6 +18,7 @@ _LOOKALIKES = str.maketrans({
     "y": "у", "k": "к", "m": "м", "t": "т", "h": "н", "b": "в",
 })
 _LEET_RU = str.maketrans({"0": "о", "3": "з", "4": "ч", "6": "б"})
+_LEET_EN = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t"})
 _RU_SUFFIXES = frozenset({
     "", "а", "я", "у", "ю", "е", "и", "ы", "о", "ом", "ем", "ой",
     "ый", "ий", "ая", "ое", "ые", "ого", "ему", "ому", "ыми",
@@ -31,6 +32,8 @@ def _canonical(word: str) -> str:
     word = unicodedata.normalize("NFKC", word).casefold().replace("ё", "е")
     if any("а" <= char <= "я" for char in word):
         word = word.translate(_LOOKALIKES).translate(_LEET_RU)
+    elif any("a" <= char <= "z" for char in word):
+        word = word.translate(_LEET_EN)
     return word
 
 
