@@ -280,6 +280,12 @@ Notification lifecycle централизован в Vuex `notifications` module
 
 `backend/uploads` — текущая compatibility/local development storage. Для multi-instance production требуется shared/object storage.
 
+### Планируемый Social Content & Media domain (не внедрён)
+
+Новые независимые bounded contexts: публикации Persona wall, подписки/feed, Stories и Reels, MediaService с S3-compatible storage + Account storage quota ledger. Все мультимедиа принадлежат Account, отображают разрешённую Persona и получают доступ через backend authorization. Ни Redis, ни S3 metadata не заменяют PostgreSQL как durable owner/quota/accounting truth. Worker для scan/transcode/expiry и bounded cleanup не запускается внутри web worker. Backend-owned медиа ссылки не раскрывают private bucket; existing Messenger/Space uploads мигрируют без breaking rewrite.
+
+Полный проектный контракт в [`social-content-media-platform-v1.md`](social-content-media-platform-v1.md), [Epic #134](https://github.com/cyrox007/PubChat/issues/134). Здесь описана **запланированная архитектура**, а не уже существующий код.
+
 ## 14. API boundaries
 
 Новые домены используют versioned prefixes, например `/identity/v2`, `/realtime/v2`, `/spaces/v1`, `/social/v1`, `/moderation/v1`, `/appearance/v1`, `/activities/v1`, `/achievements/v1`, `/activity-occurrences/v1`, `/notifications/v1`, `/support/v1`, `/discovery/v1`.
