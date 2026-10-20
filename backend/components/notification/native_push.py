@@ -76,6 +76,11 @@ def native_push_retry_delay_seconds(attempt_count: int) -> int:
     return min(NATIVE_PUSH_RETRY_BASE_SECONDS * (2 ** min(exponent, 10)), NATIVE_PUSH_RETRY_MAX_SECONDS)
 
 
+def native_unread_dedupe_key(latest_uid: UUID) -> str:
+    """One OS alert per unread message, independent of cooldown timestamps."""
+    return f"unread-dm:{latest_uid}"
+
+
 def _cooldown_slot(now: datetime) -> int:
     current = utc_naive(now).replace(tzinfo=timezone.utc)
     return int(current.timestamp()) // NATIVE_PUSH_COOLDOWN_SECONDS
@@ -364,8 +369,8 @@ async def queue_native_push_for_unread(db: AsyncSession, *, now: datetime, limit
         )
         if recent.scalar_one_or_none() is not None:
             continue
-        aggregate_key = f"unread-dm:{summary.latest_message_uid}"
-        # Do not send the same old unread message on every cooldown window.
+        aggregate_key = native_unread_dedupe_key(summary.latest_message_uid)
+        # Do not resend the same unread message every 90s after it was delivered.
         dedupe_key = aggregate_key
         statement = (
             insert(ExternalDeliveryLedger)
