@@ -59,6 +59,15 @@
                 <option value="other">Другое</option>
               </select>
             </label>
+            <label>Строгость совпадения
+              <select v-model="rule.severity" @change="markDirty"><option value="low">Низкая</option><option value="medium">Средняя</option><option value="high">Высокая</option></select>
+            </label>
+            <label>Области применения (можно выбрать несколько)
+              <select v-model="rule.surfaces" multiple size="4" @change="markDirty">
+                <option v-for="option in surfaceOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+              <small>«Везде» нельзя совмещать с другими областями.</small>
+            </label>
             <label>Предлагаемое действие
               <select v-model="rule.action" @change="markDirty">
                 <option value="warn">Предупредить</option>
@@ -87,9 +96,25 @@
           <button type="button" class="ui-button ui-button--ghost" :disabled="busy" @click="disable">Выключить политику</button>
         </div>
       </div>
+      <details class="lexicon__import">
+        <summary>Импорт / экспорт JSON и сравнение ревизий</summary>
+        <p>Импорт заменяет содержимое локального редактора. Проверьте текст в симуляторе перед сохранением ревизии.</p>
+        <textarea v-model="importText" rows="3" maxlength="150000" placeholder="[{...}] — массив правил"></textarea>
+        <div class="lexicon__toolbar">
+          <button type="button" class="ui-button ui-button--ghost" :disabled="busy" @click="importRules">Импортировать в редактор</button>
+          <button type="button" class="ui-button ui-button--ghost" :disabled="busy" @click="exportRules">Скопировать JSON правил</button>
+          <button type="button" class="ui-button ui-button--ghost" :disabled="busy" @click="compareRevision">Сравнить с активной</button>
+        </div>
+        <p v-if="compareSummary" aria-live="polite">{{ compareSummary }}</p>
+      </details>
       <section class="lexicon__simulator">
         <h3>Проверка правил на примере</h3>
         <p>Введите тестовое сообщение. Его содержимое отправляется только в привилегированный API предпросмотра, не сохраняется в журнале и не публикуется.</p>
+        <label>Область текста
+          <select v-model="sampleSurface">
+            <option v-for="option in surfaceOptions" :key="option.value" :value="option.value" :disabled="option.value === 'all'">{{ option.label }}</option>
+          </select>
+        </label>
         <textarea v-model="sample" rows="3" maxlength="4000" placeholder="Пример текста..." aria-label="Текст для проверки"></textarea>
         <button type="button" class="ui-button ui-button--ghost" :disabled="busy || !sample.trim()" @click="simulate">Проверить текст</button>
         <div v-if="simulation" class="lexicon__result" aria-live="polite">
@@ -135,6 +160,16 @@ const reason = ref('');
 const sample = ref('');
 const simulation = ref(null);
 const audit = ref([]);
+const importText = ref('');
+const compareSummary = ref('');
+const sampleSurface = ref('space_chat');
+const surfaceOptions = [
+  { value: 'all', label: 'Везде (plaintext)' }, { value: 'space_chat', label: 'Сообщения Space' },
+  { value: 'messenger_plaintext', label: 'Обычные личные сообщения' }, { value: 'profile', label: 'Профили' },
+  { value: 'activity', label: 'Активности' }, { value: 'post', label: 'Посты' },
+  { value: 'comment', label: 'Комментарии' }, { value: 'story', label: 'Истории' },
+  { value: 'reel', label: 'Рилсы' }, { value: 'media_caption', label: 'Подписи медиа' },
+];
 
 const flash = (message, failed = false) => { notice.value = message; error.value = failed; };
 const formatDate = (date) => date ? new Date(date).toLocaleString('ru-RU') : '';
@@ -142,18 +177,43 @@ const toEditor = (item) => ({
   ...item, uid: item.uid || crypto.randomUUID(),
   variantsText: (item.variants || []).join('\n'),
   exceptionsText: (item.exceptions || []).join('\n'),
+  severity: item.severity || 'medium', surfaces: item.surfaces || ['all'],
 });
 const toWire = (item) => ({
   uid: item.uid, term: item.term.trim(), language: item.language,
   category: item.category, match_mode: item.match_mode, action: item.action,
-  enabled: item.enabled,
+  enabled: item.enabled, severity: item.severity, surfaces: item.surfaces,
   variants: item.variantsText.split('\n').map(x => x.trim()).filter(Boolean),
   exceptions: item.exceptionsText.split('\n').map(x => x.trim()).filter(Boolean),
 });
 const wireRules = () => draft.value.map(toWire);
-const markDirty = () => { draftDirty.value = true; simulation.value = null; };
+const markDirty = () => { draftDirty.value = true; simulation.value = null; compareSummary.value = ''; };
+const importRules = () => {
+  try {
+    const parsed = JSON.parse(importText.value);
+    if (!Array.isArray(parsed) || parsed.length > 200 || parsed.some(x => !x || typeof x !== 'object' || typeof x.term !== 'string')) throw Error('invalid rules');
+    draft.value = parsed.map(toEditor);
+    markDirty();
+    flash('Правила загружены в редактор. Проверьте их и сохраните ревизию.');
+  } catch { flash('Некорректный JSON-массив правил (до 200 элементов).', true); }
+};
+const exportRules = async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify(wireRules(), null, 2)); flash('JSON словаря скопирован.'); }
+  catch { flash('Буфер обмена недоступен. Нужен защищённый браузер.', true); }
+};
+const compareRevision = async () => {
+  try {
+    const base = (await ModerationService.lexiconRevision(policy.value.active_revision)).data.revision.rules || [];
+    const before = new Map(base.map(x => [x.uid, JSON.stringify(x)]));
+    const after = new Map(wireRules().map(x => [x.uid, JSON.stringify(x)]));
+    const added = [...after.keys()].filter(id => !before.has(id)).length;
+    const removed = [...before.keys()].filter(id => !after.has(id)).length;
+    const changed = [...after.keys()].filter(id => before.has(id) && before.get(id) !== after.get(id)).length;
+    compareSummary.value = `Относительно #${policy.value.active_revision}: добавлено ${added}, удалено ${removed}, изменено ${changed}.`;
+  } catch { flash('Сравнение ревизий не удалось.', true); }
+};
 const addRule = () => {
-  draft.value.push(toEditor({ uid: crypto.randomUUID(), term: '', language: 'ru', category: 'profanity', match_mode: 'token', action: 'mask', enabled: true }));
+  draft.value.push(toEditor({ uid: crypto.randomUUID(), term: '', language: 'ru', category: 'profanity', match_mode: 'token', action: 'mask', severity: 'medium', surfaces: ['all'], enabled: true }));
   markDirty();
 };
 const removeRule = (index) => { draft.value.splice(index, 1); markDirty(); };
@@ -214,7 +274,7 @@ const disable = () => setMode(policy.value.active_revision, 'off');
 const simulate = async () => {
   busy.value = true;
   try {
-    const result = await ModerationService.simulateLexicon({ text: sample.value, rules: wireRules() });
+    const result = await ModerationService.simulateLexicon({ text: sample.value, surface: sampleSurface.value, rules: wireRules() });
     simulation.value = result.data.simulation;
     flash('Результат рассчитан. Тестовый текст не был опубликован.');
   } catch { flash('Проверка не выполнена: проверьте корректность правил и соединение.', true); }
