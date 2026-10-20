@@ -46,7 +46,7 @@ class LexiconRuleInput(BaseModel):
                 raise ValueError("lexicon_term_needs_letters")
         if self.match_mode == "stem" and (len(self.term) < 4 or any(not ch.isalpha() for ch in self.term)):
             raise ValueError("lexicon_stem_requires_four_letters")
-        if self.match_mode != "phrase" and any(ch.isspace() for ch in [self.term, *self.variants]):
+        if self.match_mode != "phrase" and any(char.isspace() for entry in [self.term, *self.variants] for char in entry):
             raise ValueError("lexicon_word_mode_no_whitespace")
         if len(set(x.casefold() for x in [self.term, *self.variants])) != len([self.term, *self.variants]):
             raise ValueError("lexicon_duplicate_variant")
