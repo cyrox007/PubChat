@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     from views.messages import routers as message_routes
     from views.messenger import routers as http_routers_messenger
     from views.messenger import ws_routers as ws_routers_messenger
+    from views.moderation import lexicon_routers as moderation_lexicon_routes
     from views.moderation import ai_routers as moderation_ai_routes
     from views.moderation import abuse_routers as moderation_abuse_routes
     from views.moderation import media_routers as moderation_media_routes
