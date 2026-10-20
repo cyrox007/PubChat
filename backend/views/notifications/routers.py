@@ -36,6 +36,7 @@ from components.notification.native_push import (
     list_native_push_devices,
     revoke_native_push_device,
     fcm_configured,
+    apns_configured,
 )
 from components.notification.web_push import (
     remove_web_push_subscription,
@@ -126,7 +127,7 @@ def install(app: FastAPI) -> None:
     @notifications.get("/native-push/config")
     async def native_push_config(current_user: dict = Depends(auth_middle)):
         _ = current_user
-        return {"status": "ok", "fcm_enabled": fcm_configured()}
+        return {"status": "ok", "fcm_enabled": fcm_configured(), "apns_enabled": apns_configured()}
 
     @notifications.get("/native-push/devices")
     async def native_push_devices(
