@@ -9,6 +9,8 @@
 			<div class="hero-note"><i class="fas fa-shield-halved"></i><span>Смотрите только тот материал, который был пожалован. Эта очередь не даёт произвольного доступа к личной переписке.</span></div>
 		</header>
 
+		<ModerationLexiconPanel />
+
 		<section class="filters" aria-label="Фильтры очереди">
 			<label>Статус<select v-model="filters.status" @change="loadQueue"><option value="">Активные</option><option value="triage">Новые</option><option value="in_review">В работе</option><option value="escalated">Эскалация</option></select></label>
 			<label>Приоритет<select v-model="filters.priority" @change="loadQueue"><option value="">Любой</option><option value="high">Высокий</option><option value="normal">Обычный</option><option value="low">Низкий</option></select></label>
@@ -240,6 +242,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 
 import ModerationService from '@/API/ModerationService';
+import ModerationLexiconPanel from '@/components/AdminComponents/ModerationLexiconPanel.vue';
 
 const store = useStore();
 const reports = ref([]);
