@@ -6,7 +6,7 @@ message plaintext or peer handles. Ledger dedupe is immutable per reply UID.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
@@ -145,6 +145,19 @@ async def queue_space_reply(
             channels.append("native_push")
 
     for channel in channels:
+        # A busy discussion may contain many direct replies: keep all inbox
+        # entries but rate-limit OS notifications per Account + channel.
+        recent = (await db.execute(
+            select(ExternalDeliveryLedger.uid).where(
+                ExternalDeliveryLedger.account_uid == recipient_account,
+                ExternalDeliveryLedger.channel == channel,
+                ExternalDeliveryLedger.aggregate_key.like("space-reply:%"),
+                ExternalDeliveryLedger.created_at >= current - timedelta(seconds=90),
+                ExternalDeliveryLedger.status != "suppressed",
+            ).limit(1)
+        )).scalar_one_or_none()
+        if recent is not None:
+            continue
         await db.execute(
             insert(ExternalDeliveryLedger).values(
                 account_uid=recipient_account,
