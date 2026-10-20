@@ -222,7 +222,8 @@ class FCMProvider:
 
     @property
     def configured(self) -> bool:
-        return fcm_configured()
+        from components.notification.apns_push import apns_configured
+        return fcm_configured() or apns_configured()
 
     def _oauth_token_sync(self) -> str:
         now = int(time.time())
@@ -333,6 +334,9 @@ class FCMProvider:
         return str(response_payload.get("name") or "")[:180]
 
     async def send(self, target: NativePushTarget, payload: dict[str, str]) -> str:
+        if target.provider == "apns" and target.platform == "ios":
+            from components.notification.apns_push import apns_provider
+            return await apns_provider.send(target, payload)
         return await asyncio.to_thread(self._send_sync, target, payload)
 
 
@@ -517,7 +521,7 @@ async def run_native_push_worker(
     provider = provider or FCMProvider()
     stats = NativePushStats()
     if not provider.configured:
-        logger.error("Native push skipped: direct FCM HTTP v1 credentials are not configured")
+        logger.error("Native push skipped: neither FCM nor APNs credentials are configured")
         return stats
 
     if not realtime_service.distributed:
