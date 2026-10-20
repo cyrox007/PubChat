@@ -9,6 +9,7 @@ from components.message.model import Message
 from components.moderation.policy import assert_allowed
 from components.moderation.abuse_signals import record_rate_limit_signal
 from components.notification.space_message_delivery import notify_online_space_members
+from components.notification.space_reply_delivery import queue_space_reply
 from components.realtime import realtime_service
 from components.room.model import Room, RoomBan, RoomMember
 from components.user.model import Penalty
@@ -185,11 +186,23 @@ async def _notify_online_members(
     # Secondary alerts are deliberately best-effort. The canonical room message
     # has already been persisted and broadcast; notification failure must never
     # turn a successful send into a client-visible retry/duplicate situation.
+    reply_recipient = None
+    try:
+        reply_recipient = await queue_space_reply(
+            db_session,
+            room_uid=room_uid,
+            sender_legacy_uid=user_uid,
+            formatted_message=formatted_message,
+        )
+    except Exception:
+        logger.exception("Could not queue personal Space reply; room message is already persisted")
+        await db_session.rollback()
     await notify_online_space_members(
         db_session,
         room_uid=room_uid,
         sender_uid=user_uid,
         formatted_message=formatted_message,
+        exclude_uids={reply_recipient} if reply_recipient else None,
     )
 
 
