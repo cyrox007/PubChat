@@ -300,6 +300,17 @@ export default {
 					if (!isFromCurrentUser && shouldPlaySound) dispatch('playNotificationSound');
 					break;
 				}
+				case 'space_reply_notification': {
+					commit('ADD_SPACE_NOTIFICATION', {
+						uid: `space-reply:${data.notification_uid || data.message_uid}`,
+						surface: 'space',
+						content: 'Ответили на ваше сообщение в пространстве',
+						timestamp: new Date(data.created_at || Date.now()),
+						roomUid: data.room_uid,
+					});
+					dispatch('playSpaceNotificationSound');
+					break;
+				}
 				case 'space_message_notification': {
 					const shouldNotify = data.notification?.notify_in_app ?? true;
 					if (shouldNotify) {
