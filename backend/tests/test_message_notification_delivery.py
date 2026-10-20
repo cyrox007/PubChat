@@ -24,6 +24,18 @@ class MessageDeliveryPolicyTests(unittest.TestCase):
         self.assertTrue(policy["play_sound"])
         self.assertFalse(policy["external_eligible"])
 
+    def test_backgrounded_online_socket_remains_push_eligible(self):
+        prefs = dict(DEFAULT_MESSAGE_NOTIFICATION_PREFERENCES)
+        prefs["web_push_messenger"] = True
+        prefs["native_push_messenger"] = True
+        policy = message_delivery_policy(
+            SURFACE_MESSENGER, online=True, active_context=False, preferences=prefs,
+        )
+        self.assertTrue(policy["web_push_eligible"])
+        self.assertTrue(policy["native_push_eligible"])
+        self.assertTrue(policy["external_eligible"])
+        self.assertFalse(policy["email_nudge_eligible"])
+
     def test_active_messenger_context_suppresses_duplicate_alert(self):
         policy = message_delivery_policy(
             SURFACE_MESSENGER,
