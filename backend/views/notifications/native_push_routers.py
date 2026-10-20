@@ -8,6 +8,7 @@ from components.notification.native_push import (
     revoke_native_push_device,
     upsert_native_push_device,
 )
+from components.notification.apns_push import apns_configured
 from components.notification.schemas import NativePushDeviceRemoveRequest, NativePushDeviceUpsertRequest
 from components.space.service import _get_account
 from database import Database
@@ -22,7 +23,7 @@ def install(app: FastAPI) -> None:
         return {
             "status": "ok",
             "android": {"provider": "fcm", "enabled": fcm_configured()},
-            "ios": {"provider": "apns", "enabled": False},
+            "ios": {"provider": "apns", "enabled": apns_configured()},
             "privacy": {"message_content_in_push": False},
         }
 
