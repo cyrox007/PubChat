@@ -50,7 +50,7 @@ class NativePushContractTests(unittest.TestCase):
         self.assertIn("token_hash", columns)
         self.assertIn("revoked_at", columns)
 
-    def test_native_push_policy_is_opt_in_and_offline_only(self):
+    def test_native_push_is_opt_in_even_when_websocket_stays_online_in_background(self):
         offline = message_delivery_policy(
             "messenger",
             online=False,
@@ -66,7 +66,8 @@ class NativePushContractTests(unittest.TestCase):
             active_context=False,
             preferences={"native_push_messenger": True},
         )
-        self.assertFalse(online["native_push_eligible"])
+        self.assertTrue(online["native_push_eligible"])
+        self.assertTrue(online["external_eligible"])
 
         default = message_delivery_policy("messenger", online=False, active_context=False)
         self.assertFalse(default["native_push_eligible"])

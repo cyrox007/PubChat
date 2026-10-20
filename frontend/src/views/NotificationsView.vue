@@ -4,7 +4,7 @@
 			<div>
 				<span class="eyebrow">Личный inbox</span>
 				<h1>Уведомления</h1>
-				<p>PubChat сообщает о важном без давления: вы сами выбираете внешние напоминания, а сообщения пространств не преследуют вас, когда вы офлайн.</p>
+				<p>PubChat сообщает о личных сообщениях и ответах вам в пространствах, даже если вкладка свёрнута. Общий поток комнат не рассылается Push-уведомлениями.</p>
 			</div>
 			<button v-if="unread" class="ui-button ui-button--ghost" type="button" :disabled="markingAll" @click="markAll">
 				{{ markingAll ? 'Отмечаем…' : `Прочитать все · ${unread}` }}
@@ -15,8 +15,8 @@
 			<div class="delivery-card__intro">
 				<div>
 					<span class="eyebrow">Связь вне вкладки</span>
-					<h2 id="delivery-settings-title">Как напоминать о личных сообщениях</h2>
-					<p>Внешние уведомления относятся только к Messenger и включаются явно. Текст личной переписки в email и push не отправляется.</p>
+					<h2 id="delivery-settings-title">Как получать ответы и личные сообщения</h2>
+					<p>Push для Messenger и ответов на ваши сообщения в Space включается с вашего разрешения. Текст сообщений и имена собеседников не передаются в Push.</p>
 				</div>
 				<button class="ui-button ui-button--ghost" type="button" :disabled="deliveryLoading" @click="loadDeliverySettings">
 					{{ deliveryLoading ? 'Проверяем…' : 'Обновить' }}
@@ -40,6 +40,30 @@
 					>
 				</label>
 
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-comment-dots" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy">
+						<strong>Адресные ответы из Space</strong>
+						<small>Отдельный Push, когда отвечают именно вам. Общие сообщения комнат в фоне не рассылаются.</small>
+					</span>
+					<input type="checkbox" :checked="preferences.web_push_space"
+						:disabled="deliveryLoading || !pushState.registered || savingSpacePush"
+						@change="toggleSpaceReplyPush" />
+				</label>
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-volume-high" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy"><strong>Звук личных сообщений</strong>
+						<small>Отдельная мелодия в открытом Web PubChat; системный Push использует настройки устройства.</small></span>
+					<input type="checkbox" :checked="preferences.messenger_sound" :disabled="deliveryLoading || savingSound"
+						@change="toggleSoundPreference('messenger_sound', $event)" />
+				</label>
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-volume-high" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy"><strong>Звук в пространствах</strong>
+						<small>Другая мелодия для адресных ответов и сообщений комнат во время работы сайта.</small></span>
+					<input type="checkbox" :checked="preferences.space_sound" :disabled="deliveryLoading || savingSound"
+						@change="toggleSoundPreference('space_sound', $event)" />
+				</label>
 				<div class="delivery-option delivery-option--push">
 					<span class="delivery-option__icon"><i class="far fa-bell" aria-hidden="true"></i></span>
 					<span class="delivery-option__copy">
@@ -130,6 +154,8 @@ const deliveryError = ref('');
 const savingEmail = ref(false);
 const savingBirthday = ref(false);
 const savingPush = ref(false);
+const savingSpacePush = ref(false);
+const savingSound = ref(false);
 const preferences = ref({
 	email_unread_dm_nudge: false,
 	friend_birthday_reminders: false,
@@ -147,8 +173,8 @@ const pushDescription = computed(() => {
 	if (!pushState.value.supported) return 'Этот браузер или режим сейчас не предоставляет Web Push. На iPhone/iPad проверьте установленную PWA.';
 	if (!pushState.value.serverEnabled) return 'Сервер push пока не настроен. Остальные способы уведомлений продолжают работать.';
 	if (pushState.value.permission === 'denied') return 'Уведомления запрещены в настройках браузера. Разрешение нужно изменить там вручную.';
-	if (pushState.value.registered) return 'Это устройство подписано на приватные уведомления Messenger без текста сообщений.';
-	return 'Получать системное уведомление о новом личном сообщении, когда PubChat не открыт.';
+	if (pushState.value.registered) return preferences.value.web_push_space ? 'Push активен для Messenger и ответов в Space (без текста сообщений).' : 'Push включён для Messenger. Включите «Адресные ответы из Space» ниже.';
+	return 'Получать Push о новых личных сообщениях и ответах вам в Space, когда PubChat свёрнут.';
 });
 
 const loadDeliverySettings = async () => {
@@ -203,6 +229,36 @@ const toggleBirthdayReminders = async (event) => {
     }
 };
 
+const toggleSpaceReplyPush = async (event) => {
+    const enabled = Boolean(event.target.checked);
+    savingSpacePush.value = true;
+    deliveryError.value = '';
+    try {
+        const res = await NotificationService.updateMessagePreferences({ web_push_space: enabled });
+        preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+    } catch {
+        event.target.checked = !enabled;
+        deliveryError.value = 'Не удалось обновить уведомления об ответах в Space.';
+    } finally {
+        savingSpacePush.value = false;
+    }
+};
+
+const toggleSoundPreference = async (name, event) => {
+    const enabled = Boolean(event.target.checked);
+    savingSound.value = true;
+    deliveryError.value = '';
+    try {
+        const res = await NotificationService.updateMessagePreferences({ [name]: enabled });
+        preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+    } catch {
+        event.target.checked = !enabled;
+        deliveryError.value = 'Не удалось изменить настройки звуков PubChat.';
+    } finally {
+        savingSound.value = false;
+    }
+};
+
 const toggleWebPush = async () => {
 	savingPush.value = true;
 	deliveryError.value = '';
@@ -210,9 +266,11 @@ const toggleWebPush = async () => {
 		if (pushState.value.registered) {
 			await disableMessengerWebPush();
 			preferences.value.web_push_messenger = false;
+			preferences.value.web_push_space = false;
 		} else {
 			pushState.value = { ...pushState.value, ...(await enableMessengerWebPush()) };
 			preferences.value.web_push_messenger = true;
+			preferences.value.web_push_space = true;
 		}
 		pushState.value = { ...pushState.value, ...(await webPushCapability()) };
 	} catch (error) {
