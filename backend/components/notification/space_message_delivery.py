@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from components.identity.model import AccountRelationship
+from components.identity.model import Account, AccountRelationship
 from components.notification.message_delivery import (
     SURFACE_SPACE,
     message_delivery_policy,
@@ -61,11 +61,21 @@ async def notify_online_space_members(
     """
 
     try:
+        # Space chat sockets still use legacy User UIDs; memberships, privacy,
+        # blocks and notifications use Account UIDs. Never mix these domains.
+        sender_account_uid = (await db.execute(
+            select(Account.uid).where(
+                Account.legacy_user_uid == sender_uid,
+                Account.status == "active", Account.deleted_at.is_(None),
+            ).limit(1)
+        )).scalar_one_or_none()
+        if sender_account_uid is None:
+            return
         membership_result = await db.execute(
             select(SpaceMembership.account_uid).where(
                 SpaceMembership.room_uid == room_uid,
                 SpaceMembership.status == "active",
-                SpaceMembership.account_uid != sender_uid,
+                SpaceMembership.account_uid != sender_account_uid,
             )
         )
         candidate_uids = list(dict.fromkeys(membership_result.scalars().all()))
@@ -80,11 +90,11 @@ async def notify_online_space_members(
                 AccountRelationship.relation_type == "block",
                 or_(
                     and_(
-                        AccountRelationship.from_account_uid == sender_uid,
+                        AccountRelationship.from_account_uid == sender_account_uid,
                         AccountRelationship.to_account_uid.in_(candidate_uids),
                     ),
                     and_(
-                        AccountRelationship.to_account_uid == sender_uid,
+                        AccountRelationship.to_account_uid == sender_account_uid,
                         AccountRelationship.from_account_uid.in_(candidate_uids),
                     ),
                 ),
@@ -92,7 +102,7 @@ async def notify_online_space_members(
         )
         blocked_uids: set[UUID] = set()
         for from_uid, to_uid in blocked_result.all():
-            blocked_uids.add(to_uid if from_uid == sender_uid else from_uid)
+            blocked_uids.add(to_uid if from_uid == sender_account_uid else from_uid)
 
         candidates = [uid for uid in candidate_uids if uid not in blocked_uids and uid not in (exclude_uids or set())]
         if not candidates:
