@@ -14,6 +14,7 @@
 - [`product-concept.md`](product-concept.md) — позиционирование и продуктовые инварианты.
 - [`roadmap.md`](roadmap.md) — последовательность продуктовых этапов.
 - [`social-content-media-platform-v1.md`](social-content-media-platform-v1.md) — **план** личной стены/ленты, текстовых и фото-постов, граффити, видео/музыки, Stories/Reels и S3-хранилища с персональными Account-квотами; [эпик #134](https://github.com/cyrox007/PubChat/issues/134). Не считать готовой функцией.
+- [`moderation-lexicon-v1.md`](moderation-lexicon-v1.md) — **реализуемый #145**: админские словари, ревизии, off/shadow, симуляция, аудит; реальная фильтрация сообщений остаётся [#146](https://github.com/cyrox007/PubChat/issues/146).
 - [`unified-content-moderation-v2.md`](unified-content-moderation-v2.md) — **план** управляемой цензуры слов/вариаций, проверки всех типов контента, жалоб с ограниченным контекстом, добровольного E2EE evidence и AI triage; [Epic #144](https://github.com/cyrox007/PubChat/issues/144).
 - [`cross-client-delivery-status.md`](cross-client-delivery-status.md) — **проверенное состояние пользовательских сценариев Web / Android / iOS, CI/device QA и следующие незакрытые задачи**. Сверять перед каждой реализацией.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — история выпущенных версий.
