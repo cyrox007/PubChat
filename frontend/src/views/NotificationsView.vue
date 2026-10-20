@@ -40,6 +40,30 @@
 					>
 				</label>
 
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-comment-dots" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy">
+						<strong>Адресные ответы из Space</strong>
+						<small>Отдельный Push, когда отвечают именно вам. Общие сообщения комнат в фоне не рассылаются.</small>
+					</span>
+					<input type="checkbox" :checked="preferences.web_push_space"
+						:disabled="deliveryLoading || !pushState.registered || savingSpacePush"
+						@change="toggleSpaceReplyPush" />
+				</label>
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-volume-high" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy"><strong>Звук личных сообщений</strong>
+						<small>Отдельная мелодия в открытом Web PubChat; системный Push использует настройки устройства.</small></span>
+					<input type="checkbox" :checked="preferences.messenger_sound" :disabled="deliveryLoading || savingSound"
+						@change="toggleSoundPreference('messenger_sound', $event)" />
+				</label>
+				<label class="delivery-option">
+					<span class="delivery-option__icon"><i class="fas fa-volume-high" aria-hidden="true"></i></span>
+					<span class="delivery-option__copy"><strong>Звук в пространствах</strong>
+						<small>Другая мелодия для адресных ответов и сообщений комнат во время работы сайта.</small></span>
+					<input type="checkbox" :checked="preferences.space_sound" :disabled="deliveryLoading || savingSound"
+						@change="toggleSoundPreference('space_sound', $event)" />
+				</label>
 				<div class="delivery-option delivery-option--push">
 					<span class="delivery-option__icon"><i class="far fa-bell" aria-hidden="true"></i></span>
 					<span class="delivery-option__copy">
@@ -130,6 +154,8 @@ const deliveryError = ref('');
 const savingEmail = ref(false);
 const savingBirthday = ref(false);
 const savingPush = ref(false);
+const savingSpacePush = ref(false);
+const savingSound = ref(false);
 const preferences = ref({
 	email_unread_dm_nudge: false,
 	friend_birthday_reminders: false,
@@ -147,7 +173,7 @@ const pushDescription = computed(() => {
 	if (!pushState.value.supported) return 'Этот браузер или режим сейчас не предоставляет Web Push. На iPhone/iPad проверьте установленную PWA.';
 	if (!pushState.value.serverEnabled) return 'Сервер push пока не настроен. Остальные способы уведомлений продолжают работать.';
 	if (pushState.value.permission === 'denied') return 'Уведомления запрещены в настройках браузера. Разрешение нужно изменить там вручную.';
-	if (pushState.value.registered) return 'Это устройство подписано на уведомления Messenger и личные ответы в Space (без текста сообщений).';
+	if (pushState.value.registered) return preferences.value.web_push_space ? 'Push активен для Messenger и ответов в Space (без текста сообщений).' : 'Push включён для Messenger. Включите «Адресные ответы из Space» ниже.';
 	return 'Получать Push о новых личных сообщениях и ответах вам в Space, когда PubChat свёрнут.';
 });
 
@@ -200,6 +226,36 @@ const toggleBirthdayReminders = async (event) => {
         deliveryError.value = 'Не удалось изменить напоминания о днях рождения.';
     } finally {
         savingBirthday.value = false;
+    }
+};
+
+const toggleSpaceReplyPush = async (event) => {
+    const enabled = Boolean(event.target.checked);
+    savingSpacePush.value = true;
+    deliveryError.value = '';
+    try {
+        const res = await NotificationService.updateMessagePreferences({ web_push_space: enabled });
+        preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+    } catch {
+        event.target.checked = !enabled;
+        deliveryError.value = 'Не удалось обновить уведомления об ответах в Space.';
+    } finally {
+        savingSpacePush.value = false;
+    }
+};
+
+const toggleSoundPreference = async (name, event) => {
+    const enabled = Boolean(event.target.checked);
+    savingSound.value = true;
+    deliveryError.value = '';
+    try {
+        const res = await NotificationService.updateMessagePreferences({ [name]: enabled });
+        preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+    } catch {
+        event.target.checked = !enabled;
+        deliveryError.value = 'Не удалось изменить настройки звуков PubChat.';
+    } finally {
+        savingSound.value = false;
     }
 };
 
