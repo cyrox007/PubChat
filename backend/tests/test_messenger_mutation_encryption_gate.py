@@ -14,7 +14,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
     def setUp(self):
         self.app = FastAPI()
         message_routes.install(self.app)
-        self.routes = {route.path: route.endpoint for route in self.app.routes}
+        self.routes = {(route.path, method): route.endpoint for route in self.app.routes for method in (getattr(route, 'methods', None) or ())}
         self.sender = uuid4()
         self.receiver = uuid4()
         self.message_uid = uuid4()
@@ -37,7 +37,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
         )
 
     async def test_reply_cannot_write_plaintext_to_e2ee_dialog(self):
-        endpoint = self.routes["/messages/v2/{surface}/{message_uid}/reply"]
+        endpoint = self.routes[("/messages/v2/{surface}/{message_uid}/reply", "POST")]
         with (
             patch.object(message_routes, "load_message", new_callable=AsyncMock, return_value=self.source),
             patch.object(message_routes, "ensure_message_access", new_callable=AsyncMock),
@@ -58,7 +58,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
             persist.assert_not_awaited()
 
     async def test_edit_cannot_publish_plaintext_after_mode_switch(self):
-        endpoint = self.routes["/messages/v2/{surface}/{message_uid}"]
+        endpoint = self.routes[("/messages/v2/{surface}/{message_uid}", "PATCH")]
         with (
             patch.object(message_routes, "load_message", new_callable=AsyncMock, return_value=self.source),
             patch.object(message_routes, "ensure_message_access", new_callable=AsyncMock) as access,
@@ -79,7 +79,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
             edit.assert_not_awaited()
 
     async def test_forward_cannot_create_plaintext_in_e2ee_target(self):
-        endpoint = self.routes["/messages/v2/{surface}/{message_uid}/forward"]
+        endpoint = self.routes[("/messages/v2/{surface}/{message_uid}/forward", "POST")]
         with (
             patch.object(message_routes, "load_message", new_callable=AsyncMock, return_value=self.source),
             patch.object(message_routes, "ensure_message_access", new_callable=AsyncMock),
@@ -112,8 +112,9 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
                 ("/messages/v2/{surface}/{message_uid}", message_routes.EditMessageRequest(content="text")),
                 ("/messages/v2/{surface}/{message_uid}/reply", message_routes.ReplyMessageRequest(content="text")),
             ):
+                method = "PATCH" if path == "/messages/v2/{surface}/{message_uid}" else "POST"
                 with self.assertRaises(HTTPException) as caught:
-                    await self.routes[path](
+                    await self.routes[(path, method)](
                         surface="messenger", message_uid=self.message_uid,
                         payload=payload, current_user=self.session, db=self.db,
                     )
@@ -123,7 +124,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
 
     async def test_existing_envelope_cannot_be_forwarded_without_device_envelopes(self):
         self.source.content_type = "e2ee"
-        endpoint = self.routes["/messages/v2/{surface}/{message_uid}/forward"]
+        endpoint = self.routes[("/messages/v2/{surface}/{message_uid}/forward", "POST")]
         with (
             patch.object(message_routes, "load_message", new_callable=AsyncMock, return_value=self.source),
             patch.object(message_routes, "ensure_message_access", new_callable=AsyncMock),
