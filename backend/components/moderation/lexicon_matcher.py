@@ -94,7 +94,7 @@ def _same_or_stem(candidate: str, target: str, mode: str, language: str) -> bool
     return candidate[len(target):] in endings
 
 
-def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str) -> dict:
+def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str, surface: str = "space_chat") -> dict:
     """Pure preview, no mutation: stable, bounded matches and mask projection."""
     if len(text) > MAX_TEXT_CHARS:
         raise ValueError("simulation_text_too_long")
@@ -104,7 +104,7 @@ def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str) ->
     candidate_tokens = _with_split_obfuscation(text, tokens)
     found: list[dict] = []
     for rule in rules:
-        if not rule.get("enabled", True):
+        if not rule.get("enabled", True) or not ({"all", surface} & set(rule.get("surfaces", ["all"]))):
             continue
         match_mode = rule["match_mode"]
         forms = (rule["term"], *rule.get("variants", []))
@@ -121,6 +121,8 @@ def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str) ->
                     if _same_or_stem(candidate, phrase[0], match_mode, rule["language"]) and (candidate,) not in exceptions:
                         found.append({
                             "rule_uid": str(rule["uid"]), "category": rule["category"],
+                            "severity": rule.get("severity", "medium"),
+                            "severity": rule.get("severity", "medium"),
                             "action": rule["action"], "start": start, "end": end,
                             "match_kind": "obfuscated" if (candidate, start, end) not in tokens else match_mode,
                         })
@@ -152,7 +154,7 @@ def simulate_rules(text: str, rules: list[dict], *, revision: int, mode: str) ->
                 if not masked[pos].isspace():
                     masked[pos] = "•"
     return {
-        "revision": revision, "mode": mode,
+        "revision": revision, "mode": mode, "surface": surface,
         "enforced": False,  # No runtime content preflight yet: #146.
         "matches": unique,
         "preview": "".join(masked),
