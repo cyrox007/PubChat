@@ -162,6 +162,12 @@ Space-level restriction временно bridge-ится в точный legacy 
 
 Reports приватны. Transparency означает понятное решение, причину, срок и право на апелляцию, а не публикацию конфликтов всему сообществу.
 
+### Planned moderation v2 extension (не внедрено)
+
+Расширение существующих `components/moderation` и Trust & Safety API: `ModerationPolicyRevision`/`ModerationDictionaryEntry` (языки, морфология, безопасная нормализация, исключения, actions), `ContentModerationService` preflight до persistence/fan-out в **каждом plaintext write path**, `ModerationEvidenceSnapshot` и `EvidenceContextGrant` для case-scoped расследований, OCR/ASR/media scan jobs для будущих S3 posts/stories/reels. Действующие `moderation.platform.*` RBAC/hierarchy/audit/appeals не заменяются. Автоматический AI triage остаётся advisory; санкции не обходят human authority. В `E2EE` нет серверного plaintext и автоматическая серверная цензура содержимого невозможна; для жалобы только осознанно предоставленное participant evidence.
+
+Источник планового контракта — [`unified-content-moderation-v2.md`](unified-content-moderation-v2.md), [Epic #144](https://github.com/cyrox007/PubChat/issues/144). Existing platform report evidence сейчас `reported_message_only`; context grants **ещё не реализованы**.
+
 ## 8. Product identity и engagement
 
 ### Appearance
