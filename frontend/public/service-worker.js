@@ -108,14 +108,25 @@ self.addEventListener('push', (event) => {
     ? payload.tag.trim().slice(0, 120)
     : 'pubchat-notification';
 
-  event.waitUntil(self.registration.showNotification(title, {
-    body,
-    tag,
-    renotify: false,
-    icon: '/favicons/android-chrome-192x192.png',
-    badge: '/favicons/favicon-32x32.png',
-    data: { url: safePushUrl(payload.url) },
-  }));
+  event.waitUntil((async () => {
+    // A websocket can stay connected in a minimized tab. Show OS alerts when
+    // backgrounded, but avoid duplicating the in-app sound while focused.
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const viewingApp = windows.some((client) => (
+      new URL(client.url).origin === self.location.origin
+      && client.focused === true
+      && client.visibilityState === 'visible'
+    ));
+    if (viewingApp) return;
+    await self.registration.showNotification(title, {
+      body,
+      tag,
+      renotify: false,
+      icon: '/favicons/android-chrome-192x192.png',
+      badge: '/favicons/favicon-32x32.png',
+      data: { url: safePushUrl(payload.url) },
+    });
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {
