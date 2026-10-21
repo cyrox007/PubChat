@@ -132,3 +132,36 @@ async def policy_audit(db: AsyncSession, limit: int = 50) -> list[dict]:
         "actor_account_uid": str(x.actor_account_uid) if x.actor_account_uid else None,
         "created_at": x.created_at.isoformat(),
     } for x in rows]
+
+
+async def inspect_plaintext_write(db: AsyncSession, text: str, *, surface: str, operation: str) -> None:
+    """Observe user-authored plaintext before persistence/fan-out; no punitive action.
+
+    The dictionary can currently be OFF or SHADOW only. Never inspect E2EE
+    envelopes, store message bodies, or return private policy rules to callers.
+    #146 must add policy-approved enforcement separately, after full-path QA.
+    """
+    if surface not in {"space_chat", "messenger_plaintext"}:
+        raise ValueError("unsupported_moderation_surface")
+    if operation not in {"send", "edit", "reply", "forward"}:
+        raise ValueError("unsupported_moderation_operation")
+    state = await _state(db)
+    if state.mode != "shadow" or not state.active_revision:
+        return
+    from components.moderation.lexicon_matcher import MAX_TEXT_CHARS
+    if len(text) > MAX_TEXT_CHARS:
+        # Legacy large forwarded bodies are not censored in shadow-only mode.
+        # No plaintext is emitted to application logs.
+        return
+    revision = await db.get(ModerationLexiconRevision, state.active_revision)
+    if revision is None:
+        raise HTTPException(status_code=503, detail={"error_type": "lexicon_revision_not_found"})
+    result = simulate_rules(text, revision.rules, revision=state.active_revision,
+                            mode="shadow", surface=surface)
+    if result["matches"]:
+        import logging
+        logging.getLogger(__name__).info(
+            "moderation_shadow_match surface=%s operation=%s revision=%s count=%d would_block=%s",
+            surface, operation, state.active_revision, len(result["matches"]),
+            result["would_block"],
+        )

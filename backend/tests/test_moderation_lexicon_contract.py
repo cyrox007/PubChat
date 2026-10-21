@@ -145,5 +145,63 @@ class LexiconContractTests(unittest.TestCase):
         ).rules[0].action, "mask")
 
 
+
+class ModerationPreflightShadowTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shadow_preflight_observes_without_changing_content(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        from components.moderation.lexicon_service import inspect_plaintext_write
+        import components.moderation.lexicon_service as service
+
+        policy_state = SimpleNamespace(mode="shadow", active_revision=7)
+        revision = SimpleNamespace(rules=[rule("спам", "token")])
+        db = SimpleNamespace(get=AsyncMock(return_value=revision))
+        with patch.object(service, "_state", AsyncMock(return_value=policy_state)):
+            with self.assertLogs(service.__name__, level="INFO") as logs:
+                await inspect_plaintext_write(db, "спам", surface="space_chat", operation="reply")
+        self.assertTrue(any("moderation_shadow_match" in line for line in logs.output))
+        self.assertTrue(all("спам" not in line for line in logs.output))
+        db.get.assert_awaited_once()
+
+    async def test_shadow_initial_send_supports_both_plaintext_surfaces(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        import components.moderation.lexicon_service as service
+
+        active = SimpleNamespace(mode="shadow", active_revision=3)
+        revision = SimpleNamespace(rules=[rule("спам", "token")])
+        db = SimpleNamespace(get=AsyncMock(return_value=revision))
+        with patch.object(service, "_state", AsyncMock(return_value=active)):
+            with self.assertLogs(service.__name__, level="INFO") as logs:
+                await service.inspect_plaintext_write(
+                    db, "спам", surface="space_chat", operation="send"
+                )
+                await service.inspect_plaintext_write(
+                    db, "спам", surface="messenger_plaintext", operation="send"
+                )
+        self.assertEqual(len(logs.output), 2)
+        self.assertTrue(all("operation=send" in entry for entry in logs.output))
+        self.assertTrue(all("спам" not in entry for entry in logs.output))
+
+    async def test_off_policy_never_loads_dictionary(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        from components.moderation.lexicon_service import inspect_plaintext_write
+        import components.moderation.lexicon_service as service
+
+        db = SimpleNamespace(get=AsyncMock())
+        with patch.object(service, "_state", AsyncMock(return_value=SimpleNamespace(mode="off", active_revision=2))):
+            await inspect_plaintext_write(db, "message", surface="messenger_plaintext", operation="edit")
+        db.get.assert_not_awaited()
+
+    async def test_rejects_unsupported_surface_without_database_access(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from components.moderation.lexicon_service import inspect_plaintext_write
+
+        with self.assertRaises(ValueError):
+            await inspect_plaintext_write(SimpleNamespace(), "x", surface="e2ee", operation="edit")
+
+
 if __name__ == "__main__":
     unittest.main()

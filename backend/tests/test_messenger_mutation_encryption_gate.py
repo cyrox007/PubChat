@@ -110,6 +110,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
             patch.object(message_routes, "assert_plaintext_allowed", new_callable=AsyncMock) as policy,
             patch.object(PrivateMessage, "create_private_message", new_callable=AsyncMock, return_value=created) as persist,
             patch.object(message_routes.private_manager, "send_to_user", new_callable=AsyncMock) as delivery,
+            patch.object(message_routes, "inspect_plaintext_write", new_callable=AsyncMock) as preflight,
         ):
             result = await endpoint(
                 surface="messenger", message_uid=self.message_uid,
@@ -120,6 +121,7 @@ class MessengerMutationEncryptionGateTests(IsolatedAsyncioTestCase):
             self.assertEqual(result["message"], created)
             policy.assert_awaited_once_with(self.db, self.sender, self.receiver)
             persist.assert_awaited_once()
+            preflight.assert_awaited_once_with(self.db, "hello", surface="messenger_plaintext", operation="reply")
             self.assertEqual(delivery.await_count, 2)
 
     async def test_existing_ciphertext_cannot_be_edited_or_replied_as_text(self):
