@@ -18,7 +18,8 @@ done
 
 cd "$BACKEND_DIR"
 
-# Offline validation only: check configured FCM and/or APNs signing material;\n# no message is sent and no database query is performed.
+# Offline validation only: check configured FCM and/or APNs signing material;
+# no message is sent and no database query is performed.
 if ! "$PYTHON" -m workers.native_push_delivery --check-config; then
   echo "Native push preflight failed; systemd timer was not changed." >&2
   exit 1
