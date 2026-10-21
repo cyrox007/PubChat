@@ -143,7 +143,7 @@ async def inspect_plaintext_write(db: AsyncSession, text: str, *, surface: str, 
     """
     if surface not in {"space_chat", "messenger_plaintext"}:
         raise ValueError("unsupported_moderation_surface")
-    if operation not in {"edit", "reply", "forward"}:
+    if operation not in {"send", "edit", "reply", "forward"}:
         raise ValueError("unsupported_moderation_operation")
     state = await _state(db)
     if state.mode != "shadow" or not state.active_revision:
