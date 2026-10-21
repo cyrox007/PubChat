@@ -9,6 +9,7 @@ from components.decorators.db import get_realtime_session, release_realtime_sess
 from components.identity.model import AccountRelationship, Persona, PrivacySettings
 from components.message.model import PrivateMessage
 from components.moderation.policy import assert_allowed
+from components.moderation.lexicon_service import inspect_plaintext_write
 from components.moderation.abuse_signals import detect_dm_recipient_burst, record_rate_limit_signal
 from components.notification.message_delivery import (
     SURFACE_MESSENGER,
@@ -336,6 +337,10 @@ async def handle_send_private_message(
     saved_upload_urls: list[str] = []
     message_persisted = False
     try:
+        if content_type == "text" and isinstance(data.get("content"), str):
+            await inspect_plaintext_write(
+                db_session, data["content"], surface="messenger_plaintext", operation="send"
+            )
         persisted_media_metadata, saved_upload_urls, uploaded_bytes = _persist_private_message_media(
             content_type,
             data.get("media_metadata"),
