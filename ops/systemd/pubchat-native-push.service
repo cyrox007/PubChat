@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+UMask=0077
 WorkingDirectory=/home/projects/pubchat/backend
 ExecStart=/home/projects/pubchat/backend/venv/bin/python3 -m workers.native_push_delivery
 Nice=5
