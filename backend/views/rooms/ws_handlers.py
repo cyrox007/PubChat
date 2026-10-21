@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from components.decorators.db import get_realtime_session, release_realtime_session
 from components.message.model import Message
 from components.moderation.policy import assert_allowed
+from components.moderation.lexicon_service import inspect_plaintext_write
 from components.moderation.abuse_signals import record_rate_limit_signal
 from components.notification.space_message_delivery import notify_online_space_members
 from components.notification.space_reply_delivery import queue_space_reply
@@ -296,6 +297,7 @@ async def handle_text_message(
         return
 
     try:
+        await inspect_plaintext_write(db_session, content, surface="space_chat", operation="send")
         formatted_message = await Message.create_message(
             db_session,
             {
