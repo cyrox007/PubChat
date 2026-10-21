@@ -111,3 +111,25 @@ Install updated `backend/requirements.txt` (contains `httpx[http2]`) and restart
 7. Check `systemctl status pubchat-native-push.timer` and `journalctl -u pubchat-native-push.service`.
 8. Register an Android installation through the API and explicitly enable `native_push_messenger` after OS notification permission is granted.
 9. Verify `/admin/operations` reports the `native_push` ledger health without exposing tokens or message content.
+
+### Installer with offline key preflight (2026-10-21)
+
+On the application host, once the new code, `backend/requirements.txt`, and required migrations have been deployed:
+
+```bash
+cd /home/projects/pubchat
+bash ops/install-native-push-worker.sh
+```
+
+The script checks that the backend virtualenv, systemd service and timer files exist. Before installing or enabling the timer, it invokes:
+
+```bash
+cd /home/projects/pubchat/backend
+venv/bin/python3 -m workers.native_push_delivery --check-config
+```
+
+The check loads `backend/.env`, verifies configured FCM RS256 and/or APNs ES256 signing keys offline, and fails when neither provider is configured or a configured signing key is unusable. **FCM-only and APNs-only deployments are supported.** This check does not send a notification, open a database session, contact Google or Apple, or prove provider authorization/OS delivery.
+
+On failed preflight the script exits *before modifying systemd units or enabling the timer*. It uses sudo for installing the service and timer, so review the files and ensure the operator has the necessary permissions. The service uses `UMask=0077` for files created by the worker.
+
+Inspect `systemctl status pubchat-native-push.timer`, `journalctl -u pubchat-native-push.service` and the existing admin operations metrics after installation. Real-device acceptance remains mandatory under [push launch gate #158](https://github.com/cyrox007/PubChat/issues/158); no CI or offline key test proves background delivery or custom sounds.
