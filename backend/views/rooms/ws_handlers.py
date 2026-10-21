@@ -336,6 +336,9 @@ async def handle_file_message(
     saved_files: list[dict] = []
     message_persisted = False
     try:
+        caption = data.get("content")
+        if isinstance(caption, str) and caption.strip():
+            await inspect_plaintext_write(db_session, caption, surface="media_caption", operation="send")
         saved_files = save_message_files(
             files,
             content_type=data.get("content_type", "file"),
