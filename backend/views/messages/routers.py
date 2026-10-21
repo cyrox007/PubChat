@@ -12,6 +12,7 @@ from components.message.actions import edit_message, ensure_message_access, load
 from components.message.model import Message, PrivateMessage
 from components.message.encryption_policy import assert_plaintext_allowed
 from components.moderation.policy import assert_allowed
+from components.moderation.lexicon_service import inspect_plaintext_write
 from components.room.model import RoomMember
 from database import Database
 from socket_manager import private_manager, room_manager
@@ -108,6 +109,7 @@ def install(app: FastAPI):
                 raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_edit_requires_e2ee"})
             other_uid = message.receiver_uid if message.sender_uid == user_uid else message.sender_uid
             await assert_plaintext_allowed(db, user_uid, other_uid)
+        await inspect_plaintext_write(db, payload.content, surface="messenger_plaintext" if surface == "messenger" else "space_chat", operation="edit")
         result = await edit_message(db, surface, message_uid, user_uid, payload.content)
         await _publish_frame(surface, message, _standard_frame(surface, message, overrides=result))
         return {"status": "ok", "message": result}
@@ -130,6 +132,7 @@ def install(app: FastAPI):
         if surface == "messenger" and source.content_type == "e2ee":
             raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_reply_requires_e2ee"})
         clean = payload.content.strip()
+        await inspect_plaintext_write(db, clean, surface="messenger_plaintext" if surface == "messenger" else "space_chat", operation="reply")
         metadata = {"reply_to": _reply_snapshot(surface, source)}
         if surface == "room":
             await assert_allowed(db, user_uid, "space.chat.send")
@@ -180,6 +183,7 @@ def install(app: FastAPI):
             # An encrypted envelope must never be forwarded as plaintext or as an
             # undecryptable "e2ee" row without the corresponding device envelopes.
             raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_forward_requires_e2ee"})
+        await inspect_plaintext_write(db, source.text or "", surface="messenger_plaintext" if payload.target_surface == "messenger" else "space_chat", operation="forward")
         metadata = dict(source.media_metadata or {})
         metadata["forwarded_from"] = {"surface": surface, "message_uid": str(source.uid), "author_uid": str(source.author_uid if surface == "room" else source.sender_uid)}
         if payload.target_surface == "room":
