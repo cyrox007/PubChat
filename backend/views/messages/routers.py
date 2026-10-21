@@ -132,13 +132,13 @@ def install(app: FastAPI):
         if surface == "messenger" and source.content_type == "e2ee":
             raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_reply_requires_e2ee"})
         clean = payload.content.strip()
-        await inspect_plaintext_write(db, clean, surface="messenger_plaintext" if surface == "messenger" else "space_chat", operation="reply")
         metadata = {"reply_to": _reply_snapshot(surface, source)}
         if surface == "room":
             await assert_allowed(db, user_uid, "space.chat.send")
             membership = (await db.execute(select(RoomMember.id).where(RoomMember.room_uid == source.room_uid, RoomMember.user_uid == user_uid, RoomMember.is_banned.is_(False)).limit(1))).scalar_one_or_none()
             if membership is None:
                 raise HTTPException(status_code=403, detail={"error_type": "space_access_required"})
+            await inspect_plaintext_write(db, clean, surface="space_chat", operation="reply")
             created = await Message.create_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "room_uid": str(source.room_uid), "sender_uid": str(user_uid)})
             await room_manager.broadcast_to_room(source.room_uid, created)
         elif surface == "messenger":
@@ -147,6 +147,7 @@ def install(app: FastAPI):
             if not await _dm_allowed(db, user_uid, target_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "dm_not_allowed"})
             await assert_plaintext_allowed(db, user_uid, target_uid)
+            await inspect_plaintext_write(db, clean, surface="messenger_plaintext", operation="reply")
             created = await PrivateMessage.create_private_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(target_uid)})
             await private_manager.send_to_user(user_uid, created)
             if target_uid != user_uid:
@@ -183,7 +184,6 @@ def install(app: FastAPI):
             # An encrypted envelope must never be forwarded as plaintext or as an
             # undecryptable "e2ee" row without the corresponding device envelopes.
             raise HTTPException(status_code=409, detail={"error_type": "encrypted_message_forward_requires_e2ee"})
-        await inspect_plaintext_write(db, source.text or "", surface="messenger_plaintext" if payload.target_surface == "messenger" else "space_chat", operation="forward")
         metadata = dict(source.media_metadata or {})
         metadata["forwarded_from"] = {"surface": surface, "message_uid": str(source.uid), "author_uid": str(source.author_uid if surface == "room" else source.sender_uid)}
         if payload.target_surface == "room":
@@ -191,6 +191,7 @@ def install(app: FastAPI):
             membership = (await db.execute(select(RoomMember.id).where(RoomMember.room_uid == payload.target_uid, RoomMember.user_uid == user_uid, RoomMember.is_banned.is_(False)).limit(1))).scalar_one_or_none()
             if membership is None:
                 raise HTTPException(status_code=403, detail={"error_type": "space_access_required"})
+            await inspect_plaintext_write(db, source.text or "", surface="space_chat", operation="forward")
             forwarded = await Message.create_message(db, {"content": source.text, "content_type": source.content_type, "media_metadata": metadata, "room_uid": str(payload.target_uid), "sender_uid": str(user_uid)})
             await room_manager.broadcast_to_room(payload.target_uid, forwarded)
         elif payload.target_surface == "messenger":
@@ -198,6 +199,7 @@ def install(app: FastAPI):
             if not await _dm_allowed(db, user_uid, payload.target_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "dm_not_allowed"})
             await assert_plaintext_allowed(db, user_uid, payload.target_uid)
+            await inspect_plaintext_write(db, source.text or "", surface="messenger_plaintext", operation="forward")
             forwarded = await PrivateMessage.create_private_message(db, {"content": source.text, "content_type": source.content_type, "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(payload.target_uid)})
             await private_manager.send_to_user(user_uid, forwarded)
             if payload.target_uid != user_uid:
