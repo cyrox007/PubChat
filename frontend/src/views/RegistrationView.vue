@@ -175,7 +175,7 @@ const strengthScore = computed(() => {
     if (!value) return 0;
     return Number(value.length >= 8) + Number(value.length >= 12) +
         Number(/[a-z]/.test(value) && /[A-Z]/.test(value)) +
-        Number(/[0-9]/.test(value) && /[^\\w\\s]/.test(value));
+        Number(/[0-9]/.test(value) && /[^A-Za-z0-9\\s]/.test(value));
 });
 const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
 const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
