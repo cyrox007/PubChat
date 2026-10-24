@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.message.model import Message, PrivateMessage
 from components.message.reaction_model import MessageReaction
-from components.room.model import RoomMember
+from components.identity.model import Account
+from components.room.model import RoomBan, RoomMember
+from components.space.model import SpaceMembership
 
 
 SURFACES = {"room": Message, "messenger": PrivateMessage}
@@ -38,6 +40,44 @@ def author_uid(surface: str, message) -> UUID:
     return message.author_uid if surface == "room" else message.sender_uid
 
 
+async def active_room_member(db: AsyncSession, room_uid: UUID, user_uid: UUID) -> bool:
+    """Use authoritative Account/Space membership for linked Identity v2 users.
+
+    An old room_members entry must not override a removed modern membership.
+    Only unmigrated legacy users fall back to the legacy membership table.
+    """
+    if await RoomBan.is_user_banned(db, room_uid, user_uid):
+        return False
+    account = (
+        await db.execute(
+            select(Account).where(Account.legacy_user_uid == user_uid).limit(1)
+        )
+    ).scalar_one_or_none()
+    if account is not None:
+        if account.status != "active" or account.deleted_at is not None:
+            return False
+        membership = (
+            await db.execute(
+                select(SpaceMembership.uid).where(
+                    SpaceMembership.room_uid == room_uid,
+                    SpaceMembership.account_uid == account.uid,
+                    SpaceMembership.status == "active",
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        return membership is not None
+    legacy_member = (
+        await db.execute(
+            select(RoomMember.id).where(
+                RoomMember.room_uid == room_uid,
+                RoomMember.user_uid == user_uid,
+                RoomMember.is_banned.is_(False),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    return legacy_member is not None
+
+
 async def ensure_message_access(db: AsyncSession, surface: str, message, user_uid: UUID, *, write: bool = False) -> None:
     if write and author_uid(surface, message) != user_uid:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error_type": "message_author_required"})
@@ -47,16 +87,7 @@ async def ensure_message_access(db: AsyncSession, surface: str, message, user_ui
         return
     if message.author_uid == user_uid:
         return
-    membership = (
-        await db.execute(
-            select(RoomMember.id).where(
-                RoomMember.room_uid == message.room_uid,
-                RoomMember.user_uid == user_uid,
-                RoomMember.is_banned.is_(False),
-            ).limit(1)
-        )
-    ).scalar_one_or_none()
-    if membership is None:
+    if not await active_room_member(db, message.room_uid, user_uid):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error_type": "message_access_denied"})
 
 
