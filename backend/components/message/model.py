@@ -102,11 +102,19 @@ class Message(Database.Base):
             await db_session.commit()
             await db_session.refresh(new_message)
 
-            # Загружаем связанные объекты
-            await db_session.refresh(new_message, attribute_names=["author", "reply_to"])
-
-            # Форматируем сообщение
-            return Message.format_message(new_message)
+            # Load the parent message AND its author in the async query context.
+            # refresh(..., ["reply_to"]) loads only the first relationship;
+            # touching reply_to.author during synchronous formatting otherwise
+            # triggers MissingGreenlet for replies to another person's message.
+            result = await db_session.execute(
+                select(Message)
+                .options(
+                    joinedload(Message.author),
+                    joinedload(Message.reply_to).joinedload(Message.author),
+                )
+                .where(Message.uid == new_message.uid)
+            )
+            return Message.format_message(result.scalar_one())
 
         except Exception as e:
             logger.error(f"Error creating message: {e}")
