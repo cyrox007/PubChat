@@ -201,6 +201,7 @@ watch(() => form.handle, (value) => {
     handleRequestController = null;
     handleAvailability.value = 'idle';
     handleCheckFailure.value = '';
+    handleError.value = '';
     if (!isValidRegistrationHandle(value)) return;
 
     handleAvailability.value = 'checking';
@@ -278,6 +279,10 @@ const register = async () => {
 	}
 	if (form.password !== confirmPassword.value) {
 		passwordError.value = 'Пароли не совпадают.';
+		return;
+	}
+	if (!emailValid.value) {
+		errorMessage.value = 'Проверьте формат email.';
 		return;
 	}
 
