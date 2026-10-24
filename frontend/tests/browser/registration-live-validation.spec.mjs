@@ -25,15 +25,39 @@ test('registration confirms username and accepts normal optional email', async (
   await page.getByLabel('Повторите пароль').fill('StrongExample2026!');
 
   const email = page.locator('input[type="email"]');
-  await email.fill('first.last+tag@example.com');
-  await expect(page.getByText('✓ Формат email корректен')).toBeVisible();
+  const uniqueEmail = `${handle}@example.com`;
+  await email.fill(uniqueEmail);
+  await expect(page.getByText('Проверяем, свободен ли email…')).toBeVisible();
+  // Exercises real Identity v2 + Redis lookup instead of mocking a success.
+  await expect(page.getByText('✓ Email предварительно свободен')).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('button', { name: 'Войти в PubChat' })).toBeEnabled();
 
   await email.fill('not-an-email');
-  await expect(page.getByText('Проверьте формат email')).toBeVisible();
+  await expect(page.getByText('Проверьте формат email.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Войти в PubChat' })).toBeDisabled();
 
+  // Known-taken and network-limit responses must not flash 'available'.
+  await page.route('**/api/identity/v2/email-availability', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.email === 'already-used@example.com') {
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ available: false }) });
+    } else if (body.email === 'rate-limited@example.com') {
+      await route.fulfill({ status: 429, contentType: 'application/json',
+        body: JSON.stringify({ detail: { error_type: 'email_preflight_rate_limited' } }) });
+    } else {
+      await route.continue();
+    }
+  });
+  await email.fill('already-used@example.com');
+  await expect(page.getByText('Этот email уже используется другим аккаунтом.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Войти в PubChat' })).toBeDisabled();
+  await email.fill('rate-limited@example.com');
+  await expect(page.getByText('Слишком много проверок. Повторите позднее или продолжите регистрацию.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Войти в PubChat' })).toBeEnabled();
+
   await email.fill('');
+  await expect(page.getByText('Можно оставить пустым и добавить позже.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Войти в PubChat' })).toBeEnabled();
 
   expect(runtimeErrors).toEqual([]);
