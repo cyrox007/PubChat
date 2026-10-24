@@ -59,7 +59,7 @@
 						/>
 					</div>
 					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
-                        <Transition name="field-feedback" mode="out-in">
+                        <Transition name="field-feedback">
                             <span :key="handleHint.key" :class="handleHint.className" role="status">{{ handleHint.text }}</span>
                         </Transition>
                     </div>
@@ -105,7 +105,7 @@
                                      :aria-valuenow="strengthScore" aria-valuemin="0" aria-valuemax="4">
                                     <div class="password-meter__fill" :style="{ width: `${strengthScore * 25}%` }"></div>
                                 </div>
-                                <Transition name="field-feedback" mode="out-in">
+                                <Transition name="field-feedback">
                                     <span :key="strengthLabel">Надёжность: {{ strengthLabel }}</span>
                                 </Transition>
                             </div>
@@ -123,7 +123,7 @@
 						required
 					/>
 					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
-                            <Transition name="field-feedback" mode="out-in">
+                            <Transition name="field-feedback">
                                 <span v-if="confirmPassword" :key="passwordsMatch ? 'match' : 'mismatch'"
                                       :class="passwordsMatch ? 'field__success' : 'field__error'">
                                     {{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}
@@ -145,7 +145,7 @@
 						placeholder="Для восстановления доступа"
 					/>
 					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
-                            <Transition name="field-feedback" mode="out-in">
+                            <Transition name="field-feedback">
                                 <span :key="emailHint.key" :class="emailHint.className" role="status">{{ emailHint.text }}</span>
                             </Transition>
                         </div>
@@ -479,11 +479,15 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
 .field__hint { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 .field__error { color: var(--ui-danger); font-size: var(--ui-text-sm); }
 .field__success { color: var(--ui-success, #18794e); font-size: var(--ui-text-sm); }
-.password-strength { display: grid; gap: 0.35rem; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.password-strength { display: grid; grid-template-rows: auto minmax(1em, auto); gap: 0.35rem; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.password-strength > span { grid-area: 2 / 1; }
 .password-meter { width: 100%; height: 0.55rem; overflow: hidden; border-radius: 999px; background: var(--ui-surface-muted); }
 .password-meter__fill { height: 100%; border-radius: inherit; background: var(--ui-primary); transition: width 300ms var(--ui-ease-out); }
 .field-feedback-slot { min-height: 1.5rem; display: grid; align-items: center; overflow: hidden; }
-.field-feedback-slot > span { display: block; }
+/* Allow outgoing and incoming hints to crossfade in the same grid cell. Do not
+   queue updates behind the previous leave animation on fast input/WebKit. */
+.field-feedback-slot > span { grid-area: 1 / 1; display: block; }
+.field-feedback-slot > .password-strength { grid-area: 1 / 1; }
 .field-feedback-enter-active { transition: opacity 180ms ease-out, transform 180ms ease-out; }
 .field-feedback-leave-active { transition: opacity 140ms ease-in, transform 140ms ease-in; }
 .field-feedback-enter-from { opacity: 0; transform: translateY(5px); }
