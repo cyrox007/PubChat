@@ -5,6 +5,10 @@ export default class AuthService {
 		return $api.post('/identity/v2/register', data);
 	}
 
+	static async handleAvailability(handle) {
+		return $api.get('/identity/v2/handle-availability', { params: { handle } });
+	}
+
 	static async login(data) {
 		return $api.post('/identity/v2/login', data);
 	}
