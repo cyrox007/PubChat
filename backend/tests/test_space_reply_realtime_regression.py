@@ -18,6 +18,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                 uuid4(), uuid4(), uuid4(), uuid4()
             )
             writer = MagicMock()
+            writer.flush = AsyncMock()
             writer.commit = AsyncMock()
             writer.refresh = AsyncMock(
                 side_effect=lambda message: setattr(message, "uid", reply_uid)
@@ -46,6 +47,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
             # lazy IO during synchronous message formatting (MissingGreenlet).
             self.assertIn("left outer join messages", statement)
             self.assertGreaterEqual(statement.count("join users"), 2)
+            writer.flush.assert_awaited_once()
             writer.commit.assert_awaited_once()
         asyncio.run(scenario())
 
