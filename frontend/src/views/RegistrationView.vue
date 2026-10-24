@@ -188,8 +188,8 @@ watch(() => form.handle, (value) => {
             if (version !== handleCheckVersion || value !== form.handle) return;
             const data = response.data;
             // Unknown/legacy response shapes must never be interpreted as available.
-            if (data?.available === true || data?.is_available === true) handleAvailability.value = 'available';
-            else if (data?.available === false || data?.is_available === false ||
+            if (data?.available === true || data?.is_available === true || data?.isUnique === true) handleAvailability.value = 'available';
+            else if (data?.available === false || data?.is_available === false || data?.isUnique === false ||
                      data?.exists === true) handleAvailability.value = 'taken';
             else handleAvailability.value = 'unverified';
         } catch {
