@@ -99,7 +99,10 @@ class Message(Database.Base):
             )
 
             db_session.add(new_message)
-            await db_session.commit()
+            # Resolve the message and all quoted author fields BEFORE commit.
+            # On an ORM formatting failure, the rollback will remove the write
+            # rather than leave an invisible, already committed "ghost" reply.
+            await db_session.flush()
             await db_session.refresh(new_message)
 
             # Load the parent message AND its author in the async query context.
@@ -114,7 +117,9 @@ class Message(Database.Base):
                 )
                 .where(Message.uid == new_message.uid)
             )
-            return Message.format_message(result.scalar_one())
+            formatted = Message.format_message(result.scalar_one())
+            await db_session.commit()
+            return formatted
 
         except Exception as e:
             logger.error(f"Error creating message: {e}")
