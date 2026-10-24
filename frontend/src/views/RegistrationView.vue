@@ -59,7 +59,7 @@
 					<span v-if="handleError || handleAvailability === 'taken'" class="field__error" role="status">{{ handleError || 'Этот username уже занят.' }}</span>
                     <span v-else-if="handleAvailability === 'checking'" class="field__hint" role="status">Проверяем доступность имени…</span>
                     <span v-else-if="handleAvailability === 'available'" class="field__success" role="status">✓ Username предварительно свободен</span>
-                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">Не удалось проверить сейчас. Проверим при регистрации.</span>
+                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">{{ handleCheckFailure || 'Не удалось проверить сейчас. Проверим при регистрации.' }}</span>
 					<span v-else class="field__hint">Латинские буквы, цифры, точка и подчёркивание.</span>
 				</label>
 
@@ -164,58 +164,10 @@ import { useStore } from 'vuex';
 
 import AuthService from '@/API/AuthService';
 import CSRFService from '@/API/CSRFService';
+import { isValidRegistrationHandle, isValidOptionalRegistrationEmail, parseHandleAvailability } from '@/utils/registrationValidation';
 
 const router = useRouter();
 const store = useStore();
-
-const step = ref(1);
-const confirmPassword = ref('');
-const errorMessage = ref('');
-const handleError = ref('');
-const passwordError = ref('');
-const isSubmitting = ref(false);
-const handleAvailability = ref('idle');
-let handleCheckTimer = null;
-let handleCheckVersion = 0;
-watch(() => form.handle, (value) => {
-    const version = ++handleCheckVersion;
-    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
-    handleAvailability.value = 'idle';
-    if (!/^[A-Za-z0-9_.]{3,32}$/.test(value)) return;
-    handleAvailability.value = 'checking';
-    handleCheckTimer = setTimeout(async () => {
-        try {
-            const response = await AuthService.handleAvailability(value);
-            if (version !== handleCheckVersion || value !== form.handle) return;
-            const data = response.data;
-            // Unknown/legacy response shapes must never be interpreted as available.
-            if (data?.available === true || data?.is_available === true || data?.isUnique === true) handleAvailability.value = 'available';
-            else if (data?.available === false || data?.is_available === false || data?.isUnique === false ||
-                     data?.exists === true) handleAvailability.value = 'taken';
-            else handleAvailability.value = 'unverified';
-        } catch {
-            if (version === handleCheckVersion) handleAvailability.value = 'unverified';
-        }
-    }, 450);
-});
-onUnmounted(() => {
-    ++handleCheckVersion;
-    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
-});
-
-const strengthScore = computed(() => {
-    const value = form.password;
-    if (!value) return 0;
-    return Number(value.length >= 8) + Number(value.length >= 12) +
-        Number(/[a-z]/.test(value) && /[A-Z]/.test(value)) +
-        Number(/[0-9]/.test(value) && /[^A-Za-z0-9\\s]/.test(value));
-});
-const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
-const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
-const emailValid = computed(() => !form.email || (/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(form.email.trim()) && form.email.length <= 254));
-const canComplete = computed(() => emailValid.value && form.password.length >= 8 &&
-    form.password.length <= 128 && passwordsMatch.value && !isSubmitting.value);
-
 
 const form = reactive({
 	handle: '',
@@ -225,6 +177,75 @@ const form = reactive({
 	bio: '',
 	social_intent: 'open',
 });
+
+const step = ref(1);
+const confirmPassword = ref('');
+const errorMessage = ref('');
+const handleError = ref('');
+const passwordError = ref('');
+const isSubmitting = ref(false);
+const handleAvailability = ref('idle');
+const handleCheckFailure = ref('');
+let handleCheckTimer = null;
+let handleCheckVersion = 0;
+let handleRequestController = null;
+
+// form must be initialized before watch() runs its source getter.
+watch(() => form.handle, (value) => {
+    const version = ++handleCheckVersion;
+    if (handleCheckTimer !== null) {
+        clearTimeout(handleCheckTimer);
+        handleCheckTimer = null;
+    }
+    handleRequestController?.abort();
+    handleRequestController = null;
+    handleAvailability.value = 'idle';
+    handleCheckFailure.value = '';
+    if (!isValidRegistrationHandle(value)) return;
+
+    handleAvailability.value = 'checking';
+    handleCheckTimer = setTimeout(async () => {
+        handleCheckTimer = null;
+        const controller = new AbortController();
+        handleRequestController = controller;
+        try {
+            const response = await AuthService.handleAvailability(value, controller.signal);
+            if (version !== handleCheckVersion || value !== form.handle || controller.signal.aborted) return;
+            handleAvailability.value = parseHandleAvailability(response.data);
+            if (handleAvailability.value === 'unverified')
+                handleCheckFailure.value = 'Сервер вернул неожиданный ответ. Имя проверится при регистрации.';
+        } catch (error) {
+            if (version !== handleCheckVersion || value !== form.handle || controller.signal.aborted) return;
+            handleAvailability.value = 'unverified';
+            const status = error?.response?.status;
+            handleCheckFailure.value = status === 404
+                ? 'Проверка username недоступна на сервере (404). Имя проверится при регистрации.'
+                : status
+                    ? `Не удалось проверить username (HTTP ${status}). Имя проверится при регистрации.`
+                    : 'Не удалось проверить username: проблема соединения. Имя проверится при регистрации.';
+        } finally {
+            if (handleRequestController === controller) handleRequestController = null;
+        }
+    }, 450);
+});
+onUnmounted(() => {
+    ++handleCheckVersion;
+    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
+    handleRequestController?.abort();
+});
+const strengthScore = computed(() => {
+    const value = form.password;
+    if (!value) return 0;
+    return Number(value.length >= 8) + Number(value.length >= 12) +
+        Number(/[a-z]/.test(value) && /[A-Z]/.test(value)) +
+        Number(/[0-9]/.test(value) && /[^A-Za-z0-9\s]/.test(value));
+});
+const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
+const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
+const emailValid = computed(() => isValidOptionalRegistrationEmail(form.email));
+const canComplete = computed(() => emailValid.value && form.password.length >= 8 &&
+    form.password.length <= 128 && passwordsMatch.value && !isSubmitting.value);
+
 
 const intents = [
 	{ value: 'open', label: 'Хочу пообщаться', description: 'Открыт разговорам без конкретной цели' },
@@ -237,7 +258,7 @@ const intents = [
 const goToSecurity = () => {
 	errorMessage.value = '';
 	handleError.value = '';
-	const validHandle = /^[A-Za-z0-9_.]{3,32}$/.test(form.handle);
+	const validHandle = isValidRegistrationHandle(form.handle);
 	if (!validHandle) {
 		handleError.value = 'Используйте 3–32 латинских символа, цифры, точку или подчёркивание.';
 		return;
