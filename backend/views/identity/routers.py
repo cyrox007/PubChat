@@ -1,7 +1,8 @@
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
@@ -106,6 +107,21 @@ async def _disconnect_sessions(
 
 def install(app: FastAPI):
     router = APIRouter(prefix="/identity/v2", tags=["identity-v2"])
+
+    @router.get("/handle-availability")
+    async def handle_availability(
+        handle: str,
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        # An advisory check only: register_account enforces the authoritative
+        # case-insensitive uniqueness constraint under concurrency.
+        normalized = handle.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.]{3,32}", normalized):
+            raise HTTPException(status_code=422, detail="Invalid handle")
+        existing = await db.execute(
+            select(Persona.uid).where(func.lower(Persona.handle) == normalized.casefold()).limit(1)
+        )
+        return {"available": existing.scalar_one_or_none() is None}
 
     @router.post("/register", status_code=status.HTTP_201_CREATED)
     async def register(
