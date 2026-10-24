@@ -56,7 +56,10 @@
 							required
 						/>
 					</div>
-					<span v-if="handleError" class="field__error">{{ handleError }}</span>
+					<span v-if="handleError || handleAvailability === 'taken'" class="field__error" role="status">{{ handleError || 'Этот username уже занят.' }}</span>
+                    <span v-else-if="handleAvailability === 'checking'" class="field__hint" role="status">Проверяем доступность имени…</span>
+                    <span v-else-if="handleAvailability === 'available'" class="field__success" role="status">✓ Username предварительно свободен</span>
+                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">Не удалось проверить сейчас. Проверим при регистрации.</span>
 					<span v-else class="field__hint">Латинские буквы, цифры, точка и подчёркивание.</span>
 				</label>
 
@@ -154,7 +157,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -170,6 +173,35 @@ const errorMessage = ref('');
 const handleError = ref('');
 const passwordError = ref('');
 const isSubmitting = ref(false);
+const handleAvailability = ref('idle');
+let handleCheckTimer = null;
+let handleCheckVersion = 0;
+watch(() => form.handle, (value) => {
+    const version = ++handleCheckVersion;
+    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
+    handleAvailability.value = 'idle';
+    if (!/^[A-Za-z0-9_.]{3,32}$/.test(value)) return;
+    handleAvailability.value = 'checking';
+    handleCheckTimer = setTimeout(async () => {
+        try {
+            const response = await AuthService.checkUsername(value);
+            if (version !== handleCheckVersion || value !== form.handle) return;
+            const data = response.data;
+            // Unknown/legacy response shapes must never be interpreted as available.
+            if (data?.available === true || data?.is_available === true) handleAvailability.value = 'available';
+            else if (data?.available === false || data?.is_available === false ||
+                     data?.exists === true) handleAvailability.value = 'taken';
+            else handleAvailability.value = 'unverified';
+        } catch {
+            if (version === handleCheckVersion) handleAvailability.value = 'unverified';
+        }
+    }, 450);
+});
+onUnmounted(() => {
+    ++handleCheckVersion;
+    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
+});
+
 const strengthScore = computed(() => {
     const value = form.password;
     if (!value) return 0;
@@ -209,6 +241,7 @@ const goToSecurity = () => {
 		return;
 	}
 	if (!form.display_name) return;
+    if (handleAvailability.value === 'taken') return;
 	step.value = 2;
 };
 
