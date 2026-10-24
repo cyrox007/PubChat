@@ -58,7 +58,7 @@ assert.match(component, /AuthService\.emailAvailability\(raw\.trim\(\), controll
     'Email preflight must use the cancellable Identity v2 endpoint');
 assert.match(component, /emailAvailability\.value !== 'taken'/,
     'Known registered emails must disable submit');
-assert.ok(component.includes('<Transition name="field-feedback">\n                            <span :key="emailHint.key"'),
+assert.match(component, /<Transition name="field-feedback">\s*<span :key="emailHint\.key"/,
     'Email feedback must crossfade instead of deferring new hints behind out-in leaving');
 assert.ok(component.includes('.field-feedback-slot > span { grid-area: 1 / 1;'),
     'Outgoing and incoming field hints must overlap without a layout jump');
