@@ -50,5 +50,19 @@ assert.match(auth, /\$api\.get\('\/identity\/v2\/handle-availability',\s*\{\s*pa
 const backend = readFileSync(new URL('../../backend/views/identity/routers.py', import.meta.url), 'utf8');
 assert.match(backend, /@router\.get\("\/handle-availability"\)/,
     'Identity v2 backend must expose the availability endpoint');
+assert.match(backend, /@router\.post\("\/email-availability"\)/,
+    'Identity v2 must provide a rate-limited email availability endpoint');
+assert.match(backend, /check_email_budget\(request\)/,
+    'Email preflight must enforce rate-limiting before credential lookup');
+assert.match(component, /AuthService\.emailAvailability\(raw\.trim\(\), controller\.signal\)/,
+    'Email preflight must use the cancellable Identity v2 endpoint');
+assert.match(component, /emailAvailability\.value !== 'taken'/,
+    'Known registered emails must disable submit');
+assert.match(component, /name="field-feedback" mode="out-in"/,
+    'Registration hints must use consistent animated changes');
+assert.match(component, /prefers-reduced-motion: reduce/,
+    'Hint animations must honor OS reduced-motion accessibility settings');
+assert.match(auth, /\$api\.post\('\/identity\/v2\/email-availability', \{ email \}, \{ signal \}\)/,
+    'Email check must POST body, not leak email into URL query params');
 
 console.log('Registration email, username, component initialization and API regression checks passed.');
