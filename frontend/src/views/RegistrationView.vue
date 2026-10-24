@@ -20,9 +20,11 @@
 				<span class="step-label">{{ step === 1 ? 'Ваш образ' : 'Безопасность' }}</span>
 			</div>
 
-			<div v-if="errorMessage" class="ui-notice ui-notice--danger" role="alert">
+			<Transition name="field-feedback" mode="out-in">
+			<div v-if="errorMessage" :key="errorMessage" class="ui-notice ui-notice--danger" role="alert">
 				{{ errorMessage }}
 			</div>
+		</Transition>
 
 			<Transition name="registration-step" mode="out-in">
 			<form v-if="step === 1" key="persona" class="auth-form" @submit.prevent="goToSecurity">
@@ -56,11 +58,11 @@
 							required
 						/>
 					</div>
-					<span v-if="handleError || handleAvailability === 'taken'" class="field__error" role="status">{{ handleError || 'Этот username уже занят.' }}</span>
-                    <span v-else-if="handleAvailability === 'checking'" class="field__hint" role="status">Проверяем доступность имени…</span>
-                    <span v-else-if="handleAvailability === 'available'" class="field__success" role="status">✓ Username предварительно свободен</span>
-                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">{{ handleCheckFailure || 'Не удалось проверить сейчас. Проверим при регистрации.' }}</span>
-					<span v-else class="field__hint">Латинские буквы, цифры, точка и подчёркивание.</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                        <Transition name="field-feedback">
+                            <span :key="handleHint.key" :class="handleHint.className" role="status">{{ handleHint.text }}</span>
+                        </Transition>
+                    </div>
 				</label>
 
 				<fieldset class="field intent-fieldset">
@@ -96,9 +98,18 @@
 						placeholder="Минимум 8 символов"
 						required
 					/>
-                    <div v-if="form.password" class="password-strength" aria-live="polite">
-                        <progress :value="strengthScore" max="4" aria-label="Надёжность пароля"></progress>
-                        <span>Надёжность: {{ strengthLabel }}</span>
+                    <div class="field-feedback-slot">
+                        <Transition name="field-feedback" mode="out-in">
+                            <div v-if="form.password" key="password-strength" class="password-strength" aria-live="polite">
+                                <div class="password-meter" role="progressbar" aria-label="Надёжность пароля"
+                                     :aria-valuenow="strengthScore" aria-valuemin="0" aria-valuemax="4">
+                                    <div class="password-meter__fill" :style="{ width: `${strengthScore * 25}%` }"></div>
+                                </div>
+                                <Transition name="field-feedback">
+                                    <span :key="strengthLabel">Надёжность: {{ strengthLabel }}</span>
+                                </Transition>
+                            </div>
+                        </Transition>
                     </div>
 				</label>
 
@@ -111,8 +122,17 @@
 						autocomplete="new-password"
 						required
 					/>
-					<span v-if="confirmPassword" :class="passwordsMatch ? 'field__success' : 'field__error'" aria-live="polite">{{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}</span>
-						<span v-if="passwordError" class="field__error">{{ passwordError }}</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                            <Transition name="field-feedback">
+                                <span v-if="confirmPassword" :key="passwordsMatch ? 'match' : 'mismatch'"
+                                      :class="passwordsMatch ? 'field__success' : 'field__error'">
+                                    {{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}
+                                </span>
+                            </Transition>
+                        </div>
+                        <Transition name="field-feedback" mode="out-in">
+                            <span v-if="passwordError" :key="passwordError" class="field__error">{{ passwordError }}</span>
+                        </Transition>
 				</label>
 
 				<label class="field">
@@ -124,8 +144,12 @@
 						autocomplete="email"
 						placeholder="Для восстановления доступа"
 					/>
-					<span v-if="form.email" :class="emailValid ? 'field__success' : 'field__error'" aria-live="polite">{{ emailValid ? '✓ Формат email корректен' : 'Проверьте формат email' }}</span>
-						<span class="field__hint">Можно добавить и подтвердить позже. Наличие аккаунта по email не раскрывается.</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                            <Transition name="field-feedback">
+                                <span :key="emailHint.key" :class="emailHint.className" role="status">{{ emailHint.text }}</span>
+                            </Transition>
+                        </div>
+                        <span class="field__hint">Email необязателен. Проверка занятости предварительная; окончательное решение — при регистрации.</span>
 				</label>
 
 				<label class="field">
@@ -244,7 +268,94 @@ const strengthScore = computed(() => {
 const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
 const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
 const emailValid = computed(() => isValidOptionalRegistrationEmail(form.email));
-const canComplete = computed(() => emailValid.value && form.password.length >= 8 &&
+const emailAvailability = ref('idle');
+const emailCheckFailure = ref('');
+const emailFormatSettled = ref(false);
+let emailCheckTimer = null;
+let emailValidationTimer = null;
+let emailCheckVersion = 0;
+let emailRequestController = null;
+
+watch(() => form.email, (raw) => {
+    const version = ++emailCheckVersion;
+    if (emailCheckTimer !== null) clearTimeout(emailCheckTimer);
+    if (emailValidationTimer !== null) clearTimeout(emailValidationTimer);
+    emailRequestController?.abort();
+    emailRequestController = null;
+    emailAvailability.value = 'idle';
+    emailCheckFailure.value = '';
+    emailFormatSettled.value = false;
+
+    if (!raw.trim()) return;
+    if (!emailValid.value) {
+        // Do not flash an error while the user is still typing an address.
+        emailValidationTimer = setTimeout(() => {
+            if (version === emailCheckVersion) emailFormatSettled.value = true;
+        }, 280);
+        return;
+    }
+
+    emailAvailability.value = 'checking';
+    emailCheckTimer = setTimeout(async () => {
+        const controller = new AbortController();
+        emailRequestController = controller;
+        try {
+            const response = await AuthService.emailAvailability(raw.trim(), controller.signal);
+            if (version !== emailCheckVersion || controller.signal.aborted || raw !== form.email) return;
+            emailAvailability.value = parseHandleAvailability(response.data);
+            if (emailAvailability.value === 'unverified')
+                emailCheckFailure.value = 'Сервер вернул неожиданный ответ. Проверим email при регистрации.';
+        } catch (error) {
+            if (version !== emailCheckVersion || controller.signal.aborted || raw !== form.email) return;
+            emailAvailability.value = 'unverified';
+            const status = error?.response?.status;
+            emailCheckFailure.value = status === 429
+                ? 'Слишком много проверок. Повторите позднее или продолжите регистрацию.'
+                : status === 404
+                    ? 'Сервис проверки email ещё не обновлён. Проверим при регистрации.'
+                    : status
+                        ? `Проверить email сейчас не удалось (HTTP ${status}). Проверим при регистрации.`
+                        : 'Нет связи для проверки email. Проверим при регистрации.';
+        } finally {
+            if (emailRequestController === controller) emailRequestController = null;
+        }
+    }, 650);
+});
+
+onUnmounted(() => {
+    ++emailCheckVersion;
+    if (emailCheckTimer !== null) clearTimeout(emailCheckTimer);
+    if (emailValidationTimer !== null) clearTimeout(emailValidationTimer);
+    emailRequestController?.abort();
+});
+
+const handleHint = computed(() => {
+    if (handleError.value) return { key: 'invalid', className: 'field__error', text: handleError.value };
+    switch (handleAvailability.value) {
+        case 'checking': return { key: 'checking', className: 'field__hint', text: 'Проверяем доступность имени…' };
+        case 'available': return { key: 'available', className: 'field__success', text: '✓ Username предварительно свободен' };
+        case 'taken': return { key: 'taken', className: 'field__error', text: 'Этот username уже занят.' };
+        case 'unverified': return { key: 'unverified', className: 'field__hint', text: handleCheckFailure.value || 'Не удалось проверить сейчас. Проверим при регистрации.' };
+        default: return { key: 'idle', className: 'field__hint', text: 'Латинские буквы, цифры, точка и подчёркивание.' };
+    }
+});
+
+const emailHint = computed(() => {
+    if (!form.email.trim()) return { key: 'empty', className: 'field__hint', text: 'Можно оставить пустым и добавить позже.' };
+    if (!emailValid.value) return emailFormatSettled.value
+        ? { key: 'invalid', className: 'field__error', text: 'Проверьте формат email.' }
+        : { key: 'typing', className: 'field__hint', text: 'Введите адрес полностью…' };
+    switch (emailAvailability.value) {
+        case 'checking': return { key: 'checking', className: 'field__hint', text: 'Проверяем, свободен ли email…' };
+        case 'available': return { key: 'available', className: 'field__success', text: '✓ Email предварительно свободен' };
+        case 'taken': return { key: 'taken', className: 'field__error', text: 'Этот email уже используется другим аккаунтом.' };
+        case 'unverified': return { key: 'unverified', className: 'field__hint', text: emailCheckFailure.value || 'Не удалось проверить email.' };
+        default: return { key: 'idle', className: 'field__hint', text: 'Формат email корректен.' };
+    }
+});
+const canComplete = computed(() => emailValid.value &&
+    emailAvailability.value !== 'taken' && emailAvailability.value !== 'checking' &&
+    form.password.length >= 8 &&
     form.password.length <= 128 && passwordsMatch.value && !isSubmitting.value);
 
 
@@ -368,8 +479,19 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
 .field__hint { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 .field__error { color: var(--ui-danger); font-size: var(--ui-text-sm); }
 .field__success { color: var(--ui-success, #18794e); font-size: var(--ui-text-sm); }
-.password-strength { display: grid; gap: 0.35rem; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
-.password-strength progress { width: 100%; height: 0.6rem; accent-color: var(--ui-primary); }
+.password-strength { display: grid; grid-template-rows: auto minmax(1em, auto); gap: 0.35rem; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.password-strength > span { grid-area: 2 / 1; }
+.password-meter { width: 100%; height: 0.55rem; overflow: hidden; border-radius: 999px; background: var(--ui-surface-muted); }
+.password-meter__fill { height: 100%; border-radius: inherit; background: var(--ui-primary); transition: width 300ms var(--ui-ease-out); }
+.field-feedback-slot { min-height: 1.5rem; display: grid; align-items: center; overflow: hidden; }
+/* Allow outgoing and incoming hints to crossfade in the same grid cell. Do not
+   queue updates behind the previous leave animation on fast input/WebKit. */
+.field-feedback-slot > span { grid-area: 1 / 1; display: block; }
+.field-feedback-slot > .password-strength { grid-area: 1 / 1; }
+.field-feedback-enter-active { transition: opacity 180ms ease-out, transform 180ms ease-out; }
+.field-feedback-leave-active { transition: opacity 140ms ease-in, transform 140ms ease-in; }
+.field-feedback-enter-from { opacity: 0; transform: translateY(5px); }
+.field-feedback-leave-to { opacity: 0; transform: translateY(-4px); }
 .ui-input { width: 100%; min-height: 2.875rem; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text); padding: 0.7rem 0.8rem; font: inherit; }
 .ui-input:focus-visible { outline: none; border-color: var(--ui-focus); box-shadow: var(--ui-focus-ring); }
 .ui-input--bare { border: 0; padding-left: 0.25rem; box-shadow: none !important; background: transparent; }
@@ -431,7 +553,11 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
   .auth-card { border-radius: 20px; box-shadow: var(--ui-shadow-sm); padding: 20px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .auth-card, .ui-button { animation: none !important; transition-duration: .01ms !important; }
+  .auth-card, .ui-button, .password-meter__fill,
+  .field-feedback-enter-active, .field-feedback-leave-active {
+    animation: none !important; transition-duration: .01ms !important;
+  }
+  .field-feedback-enter-from, .field-feedback-leave-to { transform: none; }
 }
 
 </style>
