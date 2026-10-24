@@ -9,6 +9,10 @@ export default class AuthService {
 		return $api.get('/identity/v2/handle-availability', { params: { handle }, signal });
 	}
 
+	static async emailAvailability(email, signal) {
+		return $api.post('/identity/v2/email-availability', { email }, { signal });
+	}
+
 	static async login(data) {
 		return $api.post('/identity/v2/login', data);
 	}
