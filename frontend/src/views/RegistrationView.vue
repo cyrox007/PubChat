@@ -20,9 +20,11 @@
 				<span class="step-label">{{ step === 1 ? 'Ваш образ' : 'Безопасность' }}</span>
 			</div>
 
-			<div v-if="errorMessage" class="ui-notice ui-notice--danger" role="alert">
+			<Transition name="field-feedback" mode="out-in">
+			<div v-if="errorMessage" :key="errorMessage" class="ui-notice ui-notice--danger" role="alert">
 				{{ errorMessage }}
 			</div>
+		</Transition>
 
 			<Transition name="registration-step" mode="out-in">
 			<form v-if="step === 1" key="persona" class="auth-form" @submit.prevent="goToSecurity">
@@ -56,11 +58,11 @@
 							required
 						/>
 					</div>
-					<span v-if="handleError || handleAvailability === 'taken'" class="field__error" role="status">{{ handleError || 'Этот username уже занят.' }}</span>
-                    <span v-else-if="handleAvailability === 'checking'" class="field__hint" role="status">Проверяем доступность имени…</span>
-                    <span v-else-if="handleAvailability === 'available'" class="field__success" role="status">✓ Username предварительно свободен</span>
-                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">{{ handleCheckFailure || 'Не удалось проверить сейчас. Проверим при регистрации.' }}</span>
-					<span v-else class="field__hint">Латинские буквы, цифры, точка и подчёркивание.</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                        <Transition name="field-feedback" mode="out-in">
+                            <span :key="handleHint.key" :class="handleHint.className" role="status">{{ handleHint.text }}</span>
+                        </Transition>
+                    </div>
 				</label>
 
 				<fieldset class="field intent-fieldset">
@@ -96,9 +98,18 @@
 						placeholder="Минимум 8 символов"
 						required
 					/>
-                    <div v-if="form.password" class="password-strength" aria-live="polite">
-                        <progress :value="strengthScore" max="4" aria-label="Надёжность пароля"></progress>
-                        <span>Надёжность: {{ strengthLabel }}</span>
+                    <div class="field-feedback-slot">
+                        <Transition name="field-feedback" mode="out-in">
+                            <div v-if="form.password" key="password-strength" class="password-strength" aria-live="polite">
+                                <div class="password-meter" role="progressbar" aria-label="Надёжность пароля"
+                                     :aria-valuenow="strengthScore" aria-valuemin="0" aria-valuemax="4">
+                                    <div class="password-meter__fill" :style="{ width: `${strengthScore * 25}%` }"></div>
+                                </div>
+                                <Transition name="field-feedback" mode="out-in">
+                                    <span :key="strengthLabel">Надёжность: {{ strengthLabel }}</span>
+                                </Transition>
+                            </div>
+                        </Transition>
                     </div>
 				</label>
 
@@ -111,8 +122,17 @@
 						autocomplete="new-password"
 						required
 					/>
-					<span v-if="confirmPassword" :class="passwordsMatch ? 'field__success' : 'field__error'" aria-live="polite">{{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}</span>
-						<span v-if="passwordError" class="field__error">{{ passwordError }}</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                            <Transition name="field-feedback" mode="out-in">
+                                <span v-if="confirmPassword" :key="passwordsMatch ? 'match' : 'mismatch'"
+                                      :class="passwordsMatch ? 'field__success' : 'field__error'">
+                                    {{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}
+                                </span>
+                            </Transition>
+                        </div>
+                        <Transition name="field-feedback" mode="out-in">
+                            <span v-if="passwordError" :key="passwordError" class="field__error">{{ passwordError }}</span>
+                        </Transition>
 				</label>
 
 				<label class="field">
@@ -124,8 +144,12 @@
 						autocomplete="email"
 						placeholder="Для восстановления доступа"
 					/>
-					<span v-if="form.email" :class="emailValid ? 'field__success' : 'field__error'" aria-live="polite">{{ emailValid ? '✓ Формат email корректен' : 'Проверьте формат email' }}</span>
-						<span class="field__hint">Можно добавить и подтвердить позже. Наличие аккаунта по email не раскрывается.</span>
+					<div class="field-feedback-slot" aria-live="polite" aria-atomic="true">
+                            <Transition name="field-feedback" mode="out-in">
+                                <span :key="emailHint.key" :class="emailHint.className" role="status">{{ emailHint.text }}</span>
+                            </Transition>
+                        </div>
+                        <span class="field__hint">Email необязателен. Проверка занятости предварительная; окончательное решение — при регистрации.</span>
 				</label>
 
 				<label class="field">
