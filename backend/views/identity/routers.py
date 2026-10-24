@@ -1,5 +1,9 @@
 import re
+import hmac
+import hashlib
 from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, status
 from sqlalchemy import func, select
@@ -7,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
 from components.identity.legacy import rotate_session_with_legacy_fallback
-from components.identity.model import Persona
+from components.identity.model import Persona, Credential
 from components.identity.schemas import (
     LoginRequest,
     PersonaCreateRequest,
@@ -37,10 +41,54 @@ from components.identity.service import (
 from components.moderation.account_access import account_access_projection
 from components.moderation.policy import assert_allowed
 from components.realtime import RealtimeUnavailable, realtime_service
+from components.realtime.redis_client import create_redis_client
 from components.reputation.public import public_reputation_projection, self_reputation_projection
 from components.social.privacy import can_view_profile
 from database import Database
 from settings import config
+
+
+class EmailAvailabilityRequest(BaseModel):
+    email: EmailStr
+
+
+# Atomic Redis counter, shared between backend workers. No email address or
+# raw client IP is stored in a key. Fail closed when Redis is unavailable.
+_EMAIL_BUDGET_SCRIPT = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n
+"""
+
+
+async def check_email_budget(request: Request) -> None:
+    peer = request.client.host if request.client else "unknown"
+    fingerprint = hmac.new(
+        config.CSRF_SECRET_KEY.encode(), peer.encode(), hashlib.sha256,
+    ).hexdigest()[:32]
+    redis = create_redis_client()
+    try:
+        for window, limit in ((60, 8), (3600, 40)):
+            count = await redis.client.eval(
+                _EMAIL_BUDGET_SCRIPT, 1,
+                f"pubchat:identity:email_preflight:{window}:{fingerprint}",
+                window,
+            )
+            if int(count) > limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail={"error_type": "email_preflight_rate_limited"},
+                    headers={"Retry-After": str(window)},
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_type": "email_preflight_unavailable"},
+        ) from None
+    finally:
+        await redis.aclose()
 
 
 COOKIE_NAME = "refresh_token"
@@ -121,6 +169,26 @@ def install(app: FastAPI):
         existing = await db.execute(
             select(Persona.uid).where(func.lower(Persona.handle) == normalized.casefold()).limit(1)
         )
+        return {"available": existing.scalar_one_or_none() is None}
+
+    @router.post("/email-availability")
+    async def email_availability(
+        payload: EmailAvailabilityRequest,
+        request: Request,
+        response: Response,
+        db: AsyncSession = Depends(Database.session_generator),
+    ):
+        # Advisory only: registration owns the final unique credential check.
+        # This endpoint intentionally mirrors an existing register/email_taken
+        # conflict, but is throttled to limit account enumeration.
+        await check_email_budget(request)
+        email = str(payload.email).strip().casefold()
+        existing = await db.execute(
+            select(Credential.uid).where(
+                Credential.kind == "email", Credential.value_normalized == email,
+            ).limit(1)
+        )
+        response.headers["Cache-Control"] = "no-store"
         return {"available": existing.scalar_one_or_none() is None}
 
     @router.post("/register", status_code=status.HTTP_201_CREATED)
