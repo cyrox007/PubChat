@@ -184,7 +184,7 @@ watch(() => form.handle, (value) => {
     handleAvailability.value = 'checking';
     handleCheckTimer = setTimeout(async () => {
         try {
-            const response = await AuthService.checkUsername(value);
+            const response = await AuthService.handleAvailability(value);
             if (version !== handleCheckVersion || value !== form.handle) return;
             const data = response.data;
             // Unknown/legacy response shapes must never be interpreted as available.
