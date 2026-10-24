@@ -99,14 +99,27 @@ class Message(Database.Base):
             )
 
             db_session.add(new_message)
-            await db_session.commit()
+            # Resolve the message and all quoted author fields BEFORE commit.
+            # On an ORM formatting failure, the rollback will remove the write
+            # rather than leave an invisible, already committed "ghost" reply.
+            await db_session.flush()
             await db_session.refresh(new_message)
 
-            # Загружаем связанные объекты
-            await db_session.refresh(new_message, attribute_names=["author", "reply_to"])
-
-            # Форматируем сообщение
-            return Message.format_message(new_message)
+            # Load the parent message AND its author in the async query context.
+            # refresh(..., ["reply_to"]) loads only the first relationship;
+            # touching reply_to.author during synchronous formatting otherwise
+            # triggers MissingGreenlet for replies to another person's message.
+            result = await db_session.execute(
+                select(Message)
+                .options(
+                    joinedload(Message.author),
+                    joinedload(Message.reply_to).joinedload(Message.author),
+                )
+                .where(Message.uid == new_message.uid)
+            )
+            formatted = Message.format_message(result.scalar_one())
+            await db_session.commit()
+            return formatted
 
         except Exception as e:
             logger.error(f"Error creating message: {e}")

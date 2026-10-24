@@ -198,13 +198,19 @@ async def _notify_online_members(
     except Exception:
         logger.exception("Could not queue personal Space reply; room message is already persisted")
         await db_session.rollback()
-    await notify_online_space_members(
-        db_session,
-        room_uid=room_uid,
-        sender_uid=user_uid,
-        formatted_message=formatted_message,
-        exclude_uids={reply_recipient} if reply_recipient else None,
-    )
+    try:
+        await notify_online_space_members(
+            db_session,
+            room_uid=room_uid,
+            sender_uid=user_uid,
+            formatted_message=formatted_message,
+            exclude_uids={reply_recipient} if reply_recipient else None,
+        )
+    except Exception:
+        # A notification outage must not tear down an active room socket or
+        # turn an already committed message into a duplicate retry.
+        logger.exception("Space message persisted but online notification failed")
+        await db_session.rollback()
 
 
 async def process_incoming_messages(
@@ -263,20 +269,32 @@ async def process_incoming_messages(
         if not await _rate_limit_message(websocket, user_uid, db_session, room_uid):
             continue
 
-        if content_type == "text":
-            await handle_text_message(data, room_uid, user_uid, db_session, websocket)
-        elif content_type in {"file", "image", "video"}:
-            await handle_file_message(data, room_uid, user_uid, db_session, websocket)
-        elif content_type in {"voice", "audio"}:
-            await handle_audio_message(data, room_uid, user_uid, db_session, websocket)
-        else:
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "error_type": "unsupported_content_type",
-                    "frontId": front_id,
-                }
-            )
+        try:
+            if content_type == "text":
+                await handle_text_message(data, room_uid, user_uid, db_session, websocket)
+            elif content_type in {"file", "image", "video"}:
+                await handle_file_message(data, room_uid, user_uid, db_session, websocket)
+            elif content_type in {"voice", "audio"}:
+                await handle_audio_message(data, room_uid, user_uid, db_session, websocket)
+            else:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "error_type": "unsupported_content_type",
+                        "frontId": front_id,
+                    }
+                )
+        except Exception:
+            # A single failed message should not close an otherwise healthy
+            # socket with 1011. The failed transaction is reset before the
+            # next frame; the client gets a correlated, non-sensitive error.
+            logger.exception("Space message frame failed for room %s", room_uid)
+            await db_session.rollback()
+            await websocket.send_json({
+                "type": "error",
+                "error_type": "space_message_failed",
+                "frontId": front_id,
+            })
 
         await manager.update_user_activity(db_session, user_uid)
 
@@ -293,6 +311,24 @@ async def handle_text_message(
         return
 
     front_id = data.get("frontId")
+    reply_raw = data.get("reply_to_uid")
+    reply_uid = None
+    if reply_raw is not None:
+        try:
+            reply_uid = UUID(str(reply_raw))
+        except (TypeError, ValueError, AttributeError):
+            await websocket.send_json({
+                "type": "error", "error_type": "reply_target_unavailable", "frontId": front_id,
+            })
+            return
+        # The client may quote only messages in this Space, never a parent
+        # from another room (whose content would otherwise be disclosed).
+        parent = await db_session.get(Message, reply_uid)
+        if parent is None or parent.room_uid != room_uid or parent.content_type == "deleted":
+            await websocket.send_json({
+                "type": "error", "error_type": "reply_target_unavailable", "frontId": front_id,
+            })
+            return
     if not await _claim_client_event(websocket, room_uid, user_uid, front_id):
         return
 
@@ -305,7 +341,7 @@ async def handle_text_message(
                 "content_type": "text",
                 "sender_uid": str(user_uid),
                 "room_uid": str(room_uid),
-                "reply_to_uid": data.get("reply_to_uid"),
+                "reply_to_uid": str(reply_uid) if reply_uid else None,
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )

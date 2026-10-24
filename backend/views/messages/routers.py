@@ -8,12 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from components.auth.middleware import auth_middle
-from components.message.actions import edit_message, ensure_message_access, load_message, reaction_projection, soft_delete_message, toggle_reaction
+from components.message.actions import active_room_member, edit_message, ensure_message_access, load_message, reaction_projection, soft_delete_message, toggle_reaction
 from components.message.model import Message, PrivateMessage
 from components.message.encryption_policy import assert_plaintext_allowed
 from components.moderation.policy import assert_allowed
 from components.moderation.lexicon_service import inspect_plaintext_write
-from components.room.model import RoomMember
 from database import Database
 from socket_manager import private_manager, room_manager
 from views.messenger.ws_handlers import _dm_allowed
@@ -135,8 +134,7 @@ def install(app: FastAPI):
         metadata = {"reply_to": _reply_snapshot(surface, source)}
         if surface == "room":
             await assert_allowed(db, user_uid, "space.chat.send")
-            membership = (await db.execute(select(RoomMember.id).where(RoomMember.room_uid == source.room_uid, RoomMember.user_uid == user_uid, RoomMember.is_banned.is_(False)).limit(1))).scalar_one_or_none()
-            if membership is None:
+            if not await active_room_member(db, source.room_uid, user_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "space_access_required"})
             await inspect_plaintext_write(db, clean, surface="space_chat", operation="reply")
             created = await Message.create_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "room_uid": str(source.room_uid), "sender_uid": str(user_uid)})
@@ -188,8 +186,7 @@ def install(app: FastAPI):
         metadata["forwarded_from"] = {"surface": surface, "message_uid": str(source.uid), "author_uid": str(source.author_uid if surface == "room" else source.sender_uid)}
         if payload.target_surface == "room":
             await assert_allowed(db, user_uid, "space.chat.send")
-            membership = (await db.execute(select(RoomMember.id).where(RoomMember.room_uid == payload.target_uid, RoomMember.user_uid == user_uid, RoomMember.is_banned.is_(False)).limit(1))).scalar_one_or_none()
-            if membership is None:
+            if not await active_room_member(db, payload.target_uid, user_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "space_access_required"})
             await inspect_plaintext_write(db, source.text or "", surface="space_chat", operation="forward")
             forwarded = await Message.create_message(db, {"content": source.text, "content_type": source.content_type, "media_metadata": metadata, "room_uid": str(payload.target_uid), "sender_uid": str(user_uid)})
