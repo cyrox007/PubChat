@@ -68,7 +68,7 @@ async def check_email_budget(request: Request) -> None:
     ).hexdigest()[:32]
     redis = create_redis_client()
     try:
-        for window, limit in ((60, 8), (3600, 40)):
+        for window, limit in ((60, 30), (3600, 120)):
             count = await redis.client.eval(
                 _EMAIL_BUDGET_SCRIPT, 1,
                 f"pubchat:identity:email_preflight:{window}:{fingerprint}",
