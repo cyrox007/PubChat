@@ -56,7 +56,10 @@
 							required
 						/>
 					</div>
-					<span v-if="handleError" class="field__error">{{ handleError }}</span>
+					<span v-if="handleError || handleAvailability === 'taken'" class="field__error" role="status">{{ handleError || 'Этот username уже занят.' }}</span>
+                    <span v-else-if="handleAvailability === 'checking'" class="field__hint" role="status">Проверяем доступность имени…</span>
+                    <span v-else-if="handleAvailability === 'available'" class="field__success" role="status">✓ Username предварительно свободен</span>
+                    <span v-else-if="handleAvailability === 'unverified'" class="field__hint" role="status">Не удалось проверить сейчас. Проверим при регистрации.</span>
 					<span v-else class="field__hint">Латинские буквы, цифры, точка и подчёркивание.</span>
 				</label>
 
@@ -93,6 +96,10 @@
 						placeholder="Минимум 8 символов"
 						required
 					/>
+                    <div v-if="form.password" class="password-strength" aria-live="polite">
+                        <progress :value="strengthScore" max="4" aria-label="Надёжность пароля"></progress>
+                        <span>Надёжность: {{ strengthLabel }}</span>
+                    </div>
 				</label>
 
 				<label class="field">
@@ -104,7 +111,8 @@
 						autocomplete="new-password"
 						required
 					/>
-					<span v-if="passwordError" class="field__error">{{ passwordError }}</span>
+					<span v-if="confirmPassword" :class="passwordsMatch ? 'field__success' : 'field__error'" aria-live="polite">{{ passwordsMatch ? '✓ Пароли совпадают' : 'Пароли не совпадают' }}</span>
+						<span v-if="passwordError" class="field__error">{{ passwordError }}</span>
 				</label>
 
 				<label class="field">
@@ -132,7 +140,7 @@
 
 				<div class="auth-actions">
 					<button class="ui-button ui-button--secondary" type="button" :disabled="isSubmitting" @click="step = 1">Назад</button>
-					<button class="ui-button ui-button--primary" type="submit" :disabled="isSubmitting" :aria-busy="isSubmitting ? 'true' : 'false'">
+					<button class="ui-button ui-button--primary" type="submit" :disabled="!canComplete" :aria-busy="isSubmitting ? 'true' : 'false'">
 						<span v-if="isSubmitting" class="button-pending"><span class="ui-spinner" aria-hidden="true"></span>Создаём…</span>
 						<span v-else>Войти в PubChat</span>
 					</button>
@@ -149,7 +157,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -165,6 +173,47 @@ const errorMessage = ref('');
 const handleError = ref('');
 const passwordError = ref('');
 const isSubmitting = ref(false);
+const handleAvailability = ref('idle');
+let handleCheckTimer = null;
+let handleCheckVersion = 0;
+watch(() => form.handle, (value) => {
+    const version = ++handleCheckVersion;
+    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
+    handleAvailability.value = 'idle';
+    if (!/^[A-Za-z0-9_.]{3,32}$/.test(value)) return;
+    handleAvailability.value = 'checking';
+    handleCheckTimer = setTimeout(async () => {
+        try {
+            const response = await AuthService.checkUsername(value);
+            if (version !== handleCheckVersion || value !== form.handle) return;
+            const data = response.data;
+            // Unknown/legacy response shapes must never be interpreted as available.
+            if (data?.available === true || data?.is_available === true) handleAvailability.value = 'available';
+            else if (data?.available === false || data?.is_available === false ||
+                     data?.exists === true) handleAvailability.value = 'taken';
+            else handleAvailability.value = 'unverified';
+        } catch {
+            if (version === handleCheckVersion) handleAvailability.value = 'unverified';
+        }
+    }, 450);
+});
+onUnmounted(() => {
+    ++handleCheckVersion;
+    if (handleCheckTimer !== null) clearTimeout(handleCheckTimer);
+});
+
+const strengthScore = computed(() => {
+    const value = form.password;
+    if (!value) return 0;
+    return Number(value.length >= 8) + Number(value.length >= 12) +
+        Number(/[a-z]/.test(value) && /[A-Z]/.test(value)) +
+        Number(/[0-9]/.test(value) && /[^A-Za-z0-9\\s]/.test(value));
+});
+const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
+const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
+const canComplete = computed(() => form.password.length >= 8 &&
+    form.password.length <= 128 && passwordsMatch.value && !isSubmitting.value);
+
 
 const form = reactive({
 	handle: '',
@@ -192,6 +241,7 @@ const goToSecurity = () => {
 		return;
 	}
 	if (!form.display_name) return;
+    if (handleAvailability.value === 'taken') return;
 	step.value = 2;
 };
 
@@ -289,6 +339,9 @@ h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: var(--ui-leadi
 .field__optional { color: var(--ui-text-subtle); font-weight: 500; }
 .field__hint { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 .field__error { color: var(--ui-danger); font-size: var(--ui-text-sm); }
+.field__success { color: var(--ui-success, #18794e); font-size: var(--ui-text-sm); }
+.password-strength { display: grid; gap: 0.35rem; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.password-strength progress { width: 100%; height: 0.6rem; accent-color: var(--ui-primary); }
 .ui-input { width: 100%; min-height: 2.875rem; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text); padding: 0.7rem 0.8rem; font: inherit; }
 .ui-input:focus-visible { outline: none; border-color: var(--ui-focus); box-shadow: var(--ui-focus-ring); }
 .ui-input--bare { border: 0; padding-left: 0.25rem; box-shadow: none !important; background: transparent; }
