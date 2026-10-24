@@ -220,6 +220,8 @@ jobs:
         run: npm run check:pwa
       - name: App lifecycle regression guard
         run: npm run check:lifecycle
+      - name: Registration live validation regression guard
+        run: npm run check:registration
       - name: Build frontend
         run: npm run build
 
