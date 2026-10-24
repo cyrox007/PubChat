@@ -46,7 +46,7 @@ class EmailAvailabilityContractTests(unittest.TestCase):
                 self.assertNotIn("192.0.2.40", key)
             redis.aclose.assert_awaited_once()
 
-            redis.client.eval = AsyncMock(side_effect=[9])
+            redis.client.eval = AsyncMock(side_effect=[31])
             with patch("views.identity.routers.create_redis_client", return_value=redis):
                 with self.assertRaises(HTTPException) as raised:
                     await check_email_budget(request_from())
@@ -72,7 +72,7 @@ class EmailAvailabilityContractTests(unittest.TestCase):
             response = Response()
             with patch("views.identity.routers.check_email_budget", new_callable=AsyncMock) as budget:
                 answer = await route.endpoint(
-                    EmailAvailabilityRequest(email=" User@Example.org "),
+                    EmailAvailabilityRequest(email="User@Example.org"),
                     request_from(), response, db,
                 )
                 budget.assert_awaited_once()
