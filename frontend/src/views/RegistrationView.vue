@@ -124,7 +124,8 @@
 						autocomplete="email"
 						placeholder="Для восстановления доступа"
 					/>
-					<span class="field__hint">Можно добавить и подтвердить позже. Телефон для входа не требуется.</span>
+					<span v-if="form.email" :class="emailValid ? 'field__success' : 'field__error'" aria-live="polite">{{ emailValid ? '✓ Формат email корректен' : 'Проверьте формат email' }}</span>
+						<span class="field__hint">Можно добавить и подтвердить позже. Наличие аккаунта по email не раскрывается.</span>
 				</label>
 
 				<label class="field">
@@ -211,7 +212,8 @@ const strengthScore = computed(() => {
 });
 const strengthLabel = computed(() => ['Не задан', 'Низкая', 'Средняя', 'Хорошая', 'Высокая'][strengthScore.value]);
 const passwordsMatch = computed(() => Boolean(confirmPassword.value) && form.password === confirmPassword.value);
-const canComplete = computed(() => form.password.length >= 8 &&
+const emailValid = computed(() => !form.email || (/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(form.email.trim()) && form.email.length <= 254));
+const canComplete = computed(() => emailValid.value && form.password.length >= 8 &&
     form.password.length <= 128 && passwordsMatch.value && !isSubmitting.value);
 
 
