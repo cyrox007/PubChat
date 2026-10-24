@@ -58,8 +58,10 @@ assert.match(component, /AuthService\.emailAvailability\(raw\.trim\(\), controll
     'Email preflight must use the cancellable Identity v2 endpoint');
 assert.match(component, /emailAvailability\.value !== 'taken'/,
     'Known registered emails must disable submit');
-assert.match(component, /name="field-feedback" mode="out-in"/,
-    'Registration hints must use consistent animated changes');
+assert.ok(component.includes('<Transition name="field-feedback">\n                            <span :key="emailHint.key"'),
+    'Email feedback must crossfade instead of deferring new hints behind out-in leaving');
+assert.ok(component.includes('.field-feedback-slot > span { grid-area: 1 / 1;'),
+    'Outgoing and incoming field hints must overlap without a layout jump');
 assert.match(component, /prefers-reduced-motion: reduce/,
     'Hint animations must honor OS reduced-motion accessibility settings');
 assert.match(auth, /\$api\.post\('\/identity\/v2\/email-availability', \{ email \}, \{ signal \}\)/,
