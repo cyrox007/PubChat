@@ -4,6 +4,9 @@ import NotificationService from '@/API/NotificationService';
 const POLL_INTERVAL_MS = 30000;
 let pollingTimer = null;
 let refreshOnFocus = null;
+let observedReplyIds = null;
+let inboxRequest = null;
+let inboxGeneration = 0;
 
 const normalizeUnread = (value) => Math.max(0, Number(value) || 0);
 
@@ -42,6 +45,47 @@ export default {
 			commit('setInitialized', true);
 			return response.data.unread;
 		},
+        async pollInbox({ commit, rootGetters }) {
+            if (!rootGetters.isAuth) return;
+            if (inboxRequest) return inboxRequest;
+            const generation = inboxGeneration;
+            inboxRequest = (async () => {
+                const response = await NotificationService.list({ limit: 50 });
+                if (generation !== inboxGeneration) return;
+                const inbox = response.data?.notifications || [];
+                const replies = inbox.filter((item) => item.kind === 'space_reply' && item.uid);
+                if (observedReplyIds !== null && document.visibilityState === 'visible') {
+                    // The original inbox snapshot must not create a storm of
+                    // banners for replies received before the tab was opened.
+                    const fresh = replies.filter((item) => (
+                        !item.is_read && !observedReplyIds.has(item.uid) && item.context_space_uid
+                    ));
+                    for (const item of fresh.slice(0, 5).reverse()) {
+                        commit('messenger/ADD_SPACE_NOTIFICATION', {
+                            uid: `space-reply:${item.uid}`,
+                            serverNotificationUid: item.uid,
+                            surface: 'space',
+                            roomUid: item.context_space_uid,
+                            timestamp: new Date(item.created_at || Date.now()),
+                        }, { root: true });
+                    }
+                }
+                if (observedReplyIds === null) observedReplyIds = new Set();
+                for (const item of replies) observedReplyIds.add(item.uid);
+                if (observedReplyIds.size > 500) {
+                    observedReplyIds = new Set([...observedReplyIds].slice(-300));
+                }
+                commit('setUnread', response.data?.unread || 0);
+                commit('setInitialized', true);
+                window.dispatchEvent(new CustomEvent('pubchat:notifications-changed'));
+            })().finally(() => { inboxRequest = null; });
+            return inboxRequest;
+        },
+        recordReplyNotice(_, uid) {
+            if (!uid) return;
+            if (observedReplyIds === null) observedReplyIds = new Set();
+            observedReplyIds.add(uid);
+        },
         async refreshSoundPreference({ commit }) {
             const response = await NotificationService.messagePreferences();
             commit('setSpaceSound', response.data?.preferences?.space_sound !== false);
@@ -68,6 +112,9 @@ export default {
 			commit('setUnread', Math.max(0, state.unread - Math.max(0, Number(amount) || 0)));
 		},
 		clear({ commit }) {
+            inboxGeneration += 1;
+            observedReplyIds = null;
+            inboxRequest = null;
 			commit('setUnread', 0);
 			commit('setInitialized', false);
 			commit('setSyncing', false);
@@ -78,12 +125,13 @@ export default {
             // Polling is read-only. Reminder sync must not run every 30 sec.
             refreshOnFocus = () => {
                 if (document.visibilityState === 'visible') {
-                    dispatch('refreshUnread').catch(() => {});
+                    dispatch('pollInbox').catch(() => {});
                 }
             };
             pollingTimer = window.setInterval(refreshOnFocus, POLL_INTERVAL_MS);
             window.addEventListener('focus', refreshOnFocus);
             document.addEventListener('visibilitychange', refreshOnFocus);
+            refreshOnFocus();
         },
         stopPolling() {
             if (pollingTimer) window.clearInterval(pollingTimer);
