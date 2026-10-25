@@ -77,12 +77,13 @@ export default {
 		async clearUser({ commit }) {
 			// If auth expires, invalidate the local PushSubscription as a privacy
 			// boundary. The stale server endpoint will receive 404/410 and be removed.
-			await dropLocalWebPushSubscription().catch(() => null);
 			clearAccessToken();
 			localStorage.removeItem('access_token');
 			commit('setUser', null);
 			commit('setIdentity', null);
 			commit('setAuth', false);
+			// Clear visible identity before waiting for browser push cleanup.
+			await dropLocalWebPushSubscription().catch(() => null);
 		},
 		async applyIdentitySession({ commit, state }, responseData) {
 			const previousAccountUid = state.identity?.account?.uid || null;
