@@ -222,6 +222,8 @@ jobs:
         run: npm run check:pwa
       - name: App lifecycle regression guard
         run: npm run check:lifecycle
+      - name: Web notification foreground and PWA regression guard
+        run: npm run check:notifications
       - name: Registration live validation regression guard
         run: npm run check:registration
       - name: Build frontend
