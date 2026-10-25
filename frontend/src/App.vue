@@ -136,6 +136,7 @@ const bootstrapAuthenticatedServices = async () => {
 	await Promise.all([
 		store.dispatch('messenger/connectMessenger'),
 		store.dispatch('notifications/sync').catch(() => null),
+        store.dispatch('notifications/refreshSoundPreference').catch(() => null),
 	]);
 	store.dispatch('notifications/startPolling');
 	const room = store.getters['chat/getCurrentRoom'];
