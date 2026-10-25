@@ -13,8 +13,13 @@ from components.message.model import Message, PrivateMessage
 from components.message.encryption_policy import assert_plaintext_allowed
 from components.moderation.policy import assert_allowed
 from components.moderation.lexicon_service import inspect_plaintext_write
+from components.notification.space_reply_delivery import queue_space_reply
+from components.notification.space_message_delivery import notify_online_space_members
 from database import Database
 from socket_manager import private_manager, room_manager
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 from views.messenger.ws_handlers import _dm_allowed
 
 
@@ -94,6 +99,39 @@ def _reply_snapshot(surface: str, source) -> dict:
     }
 
 
+async def _publish_space_reply_after_commit(
+    db: AsyncSession, *, room_uid: UUID, sender_uid: UUID, created: dict,
+) -> None:
+    """Match the room WebSocket path for replies sent via Android HTTP.
+
+    A saved message must survive an unavailable realtime or push service.
+    This creates the same durable personal reply notification + pending push
+    ledger as the WebSocket path, but never notifies for unrelated room posts.
+    """
+    try:
+        await room_manager.broadcast_to_room(room_uid, created)
+    except Exception:
+        logger.exception("Room reply saved but realtime broadcast failed")
+    recipient = None
+    try:
+        recipient = await queue_space_reply(
+            db, room_uid=room_uid, sender_legacy_uid=sender_uid,
+            formatted_message=created,
+        )
+    except Exception:
+        logger.exception("Room reply saved but personal notification failed")
+        await db.rollback()
+    try:
+        await notify_online_space_members(
+            db, room_uid=room_uid, sender_uid=sender_uid,
+            formatted_message=created,
+            exclude_uids={recipient} if recipient else None,
+        )
+    except Exception:
+        logger.exception("Room reply saved but secondary online alert failed")
+        await db.rollback()
+
+
 def install(app: FastAPI):
     router = APIRouter(prefix="/messages/v2", tags=["messages-v2"])
 
@@ -137,8 +175,20 @@ def install(app: FastAPI):
             if not await active_room_member(db, source.room_uid, user_uid):
                 raise HTTPException(status_code=403, detail={"error_type": "space_access_required"})
             await inspect_plaintext_write(db, clean, surface="space_chat", operation="reply")
-            created = await Message.create_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "room_uid": str(source.room_uid), "sender_uid": str(user_uid)})
-            await room_manager.broadcast_to_room(source.room_uid, created)
+            room_uid = source.room_uid
+            created = await Message.create_message(db, {
+                "content": clean,
+                "content_type": "text",
+                "media_metadata": metadata,
+                "room_uid": str(room_uid),
+                "sender_uid": str(user_uid),
+                # Required for durable Space reply notification claim and
+                # same-room parent verification, not only UI quote metadata.
+                "reply_to_uid": str(source.uid),
+            })
+            await _publish_space_reply_after_commit(
+                db, room_uid=room_uid, sender_uid=user_uid, created=created,
+            )
         elif surface == "messenger":
             await assert_allowed(db, user_uid, "messenger.send")
             target_uid = source.receiver_uid if source.sender_uid == user_uid else source.sender_uid
