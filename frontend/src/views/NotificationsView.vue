@@ -195,6 +195,7 @@ const loadDeliverySettings = async () => {
 			...(preferenceResponse.data?.preferences || {}),
 		};
 		pushState.value = { ...pushState.value, ...capability };
+        store.dispatch('notifications/setSpaceSound', preferences.value.space_sound !== false);
 	} catch (error) {
 		console.error('Не удалось загрузить настройки внешних уведомлений:', error);
 		deliveryError.value = 'Не удалось проверить настройки уведомлений. Попробуйте ещё раз.';
@@ -256,6 +257,9 @@ const toggleSoundPreference = async (name, event) => {
     try {
         const res = await NotificationService.updateMessagePreferences({ [name]: enabled });
         preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+        if (name === 'space_sound') {
+            store.dispatch('notifications/setSpaceSound', preferences.value.space_sound !== false);
+        }
     } catch {
         event.target.checked = !enabled;
         deliveryError.value = 'Не удалось изменить настройки звуков PubChat.';
