@@ -5,8 +5,8 @@ import { useStore } from 'vuex';
 
 import HeaderComponent from './components/HeaderComponent/index.vue';
 import CallOverlay from '@/components/Calls/CallOverlay.vue';
-import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vue';
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
+import NotificationService from '@/API/NotificationService';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
 
@@ -176,6 +176,35 @@ const ensureSessionAndConnect = async () => {
 	return authenticatedBootstrap;
 };
 
+// A focused PWA suppresses duplicate OS banners. If realtime is down,
+// the service worker forwards the privacy-safe push event so the durable
+// inbox can still be surfaced without depending on a room socket.
+const handleServiceWorkerNotification = async (event) => {
+    const push = event.data;
+    if (push?.type !== 'pubchat:push-received' || !store.getters.isAuth) return;
+    store.dispatch('notifications/refreshUnread').catch(() => {});
+    window.dispatchEvent(new CustomEvent('pubchat:notifications-changed'));
+    if (push.eventType !== 'space_reply') return;
+    try {
+        const response = await NotificationService.list({ limit: 25 });
+        const reply = (response.data?.notifications || []).find((item) => (
+            item.kind === 'space_reply' && !item.is_read
+            && String(item.context_space_uid) === String(push.roomUid)
+        ));
+        if (!reply) return;
+        store.commit('messenger/ADD_SPACE_NOTIFICATION', {
+            uid: `space-reply:${reply.uid}`,
+            serverNotificationUid: reply.uid,
+            surface: 'space',
+            content: 'Ответили на ваше сообщение в пространстве',
+            roomUid: reply.context_space_uid,
+            timestamp: new Date(reply.created_at || Date.now()),
+        });
+    } catch {
+        // The server-owned inbox remains durable and will be checked on focus.
+    }
+};
+
 const handleSessionExpired = async () => {
 	clearBootstrapRetry();
 	bootstrapRetryAttempt = 0;
@@ -208,6 +237,7 @@ onMounted(async () => {
 	window.addEventListener('pubchat:session-expired', handleSessionExpired);
 	window.addEventListener('offline', handleOffline);
 	window.addEventListener('online', handleOnline);
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerNotification);
 	await ensureSessionAndConnect();
 });
 
@@ -221,6 +251,7 @@ onUnmounted(() => {
 	window.removeEventListener('pubchat:session-expired', handleSessionExpired);
 	window.removeEventListener('offline', handleOffline);
 	window.removeEventListener('online', handleOnline);
+    navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerNotification);
 });
 
 watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
@@ -236,7 +267,6 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 
 <template>
 	<div class="app-shell" :class="{ 'app-shell--auth': isGuestAuthPage }">
-		<ReplyNotifications />
 		<MessageNotifications />
 		<CallOverlay />
 		<HeaderComponent />
