@@ -104,7 +104,7 @@
 		</section>
 		<section v-else-if="items.length" class="notification-list" aria-label="Уведомления PubChat">
 			<button
-				v-for="item in items"
+				v-for="item in orderedItems"
 				:key="item.uid"
 				type="button"
 				class="notification-card"
@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -148,6 +148,11 @@ const markingAll = ref(false);
 const errorMessage = ref('');
 const items = ref([]);
 const unread = computed(() => store.getters['notifications/unread']);
+const orderedItems = computed(() => [...items.value].sort((a, b) =>
+    Number(a.is_read) - Number(b.is_read)
+    || new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+));
+let refreshTimer = null;
 
 const deliveryLoading = ref(false);
 const deliveryError = ref('');
@@ -190,6 +195,7 @@ const loadDeliverySettings = async () => {
 			...(preferenceResponse.data?.preferences || {}),
 		};
 		pushState.value = { ...pushState.value, ...capability };
+        store.dispatch('notifications/setSpaceSound', preferences.value.space_sound !== false);
 	} catch (error) {
 		console.error('Не удалось загрузить настройки внешних уведомлений:', error);
 		deliveryError.value = 'Не удалось проверить настройки уведомлений. Попробуйте ещё раз.';
@@ -251,6 +257,9 @@ const toggleSoundPreference = async (name, event) => {
     try {
         const res = await NotificationService.updateMessagePreferences({ [name]: enabled });
         preferences.value = { ...preferences.value, ...(res.data?.preferences || {}) };
+        if (name === 'space_sound') {
+            store.dispatch('notifications/setSpaceSound', preferences.value.space_sound !== false);
+        }
     } catch {
         event.target.checked = !enabled;
         deliveryError.value = 'Не удалось изменить настройки звуков PubChat.';
@@ -288,20 +297,22 @@ const toggleWebPush = async () => {
 	}
 };
 
-const load = async () => {
-	loading.value = true;
-	errorMessage.value = '';
-	try {
-		await store.dispatch('notifications/sync');
+const load = async ({ silent = false } = {}) => {
+    if (!silent) {
+        loading.value = true;
+        errorMessage.value = '';
+    }
+    try {
+        if (!silent) await store.dispatch('notifications/sync');
 		const response = await NotificationService.list({ limit: 100 });
 		items.value = response.data.notifications || [];
 		store.dispatch('notifications/setUnread', response.data.unread || 0);
-	} catch (error) {
-		console.error('Не удалось загрузить notifications:', error);
-		errorMessage.value = 'Проверьте соединение и попробуйте ещё раз.';
-	} finally {
-		loading.value = false;
-	}
+    } catch (error) {
+        console.error('Не удалось загрузить notifications:', error);
+        if (!silent) errorMessage.value = 'Проверьте соединение и попробуйте ещё раз.';
+    } finally {
+        if (!silent) loading.value = false;
+    }
 };
 
 const markAll = async () => {
@@ -328,9 +339,12 @@ const openNotification = async (item) => {
 			// Navigation stays useful even if read-state update temporarily fails.
 		}
 	}
-	if (item.context_space_uid) {
-		await router.push({ name: 'space-life', params: { uid: item.context_space_uid } });
-	}
+    if (item.context_space_uid) {
+        await router.push({
+            name: item.kind === 'space_reply' ? 'space' : 'space-life',
+            params: { uid: item.context_space_uid },
+        });
+    }
 };
 
 const formatDate = (value) => value
@@ -340,9 +354,20 @@ const contextLabel = (item) => item.occurrence_starts_at
 	? `Встреча ${new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.occurrence_starts_at))}`
 	: 'PubChat';
 
+const refreshWhileVisible = () => {
+    if (document.visibilityState === 'visible') load({ silent: true });
+};
 onMounted(() => {
-	load();
-	loadDeliverySettings();
+    load();
+    loadDeliverySettings();
+    refreshTimer = window.setInterval(refreshWhileVisible, 30000);
+    document.addEventListener('visibilitychange', refreshWhileVisible);
+    window.addEventListener('pubchat:notifications-changed', refreshWhileVisible);
+});
+onUnmounted(() => {
+    if (refreshTimer) window.clearInterval(refreshTimer);
+    document.removeEventListener('visibilitychange', refreshWhileVisible);
+    window.removeEventListener('pubchat:notifications-changed', refreshWhileVisible);
 });
 </script>
 

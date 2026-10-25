@@ -1,143 +1,161 @@
 <template>
-	<div class="message-notifications">
-		<button type="button" aria-label="Уведомления о сообщениях" @click="toggleNotifications">
-			<i class="icon-bell"></i>
-			<span v-if="hasUnreadNotifications" class="badge">{{ unreadNotifications.length }}</span>
-		</button>
-
-		<div v-if="shouldShowNotifications" class="dropdown">
-			<button
-				v-for="notification in unreadNotifications"
-				:key="notification.uid"
-				type="button"
-				class="notification-item"
-				@click="openNotification(notification)"
-			>
-				<img :src="notification.sender?.avatar || '/default-avatar.png'" class="avatar" alt="" />
-				<span class="content">
-					<strong>{{ notification.sender?.display_name || notification.sender?.username || 'Новое сообщение' }}</strong>
-					<span class="notification-text">{{ notification.content }}</span>
-					<small>{{ formatDate(notification.timestamp) }}</small>
-				</span>
-			</button>
-		</div>
-	</div>
+    <Transition name="incoming-notice">
+        <aside v-if="visibleNotice" class="incoming-notice" role="status" aria-live="polite">
+            <span class="incoming-notice__icon" aria-hidden="true">
+                <i class="fas fa-comment-dots"></i>
+            </span>
+            <button class="incoming-notice__open" type="button" @click="openNotification(visibleNotice)">
+                <strong>{{ heading(visibleNotice) }}</strong>
+                <span>{{ description(visibleNotice) }}</span>
+                <small>Открыть разговор</small>
+            </button>
+            <button class="incoming-notice__close" type="button"
+                aria-label="Закрыть уведомление" @click="dismiss">
+                <i class="fas fa-xmark" aria-hidden="true"></i>
+            </button>
+        </aside>
+    </Transition>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import NotificationService from '@/API/NotificationService';
+import { isViewingNotificationTarget, shouldShowForegroundNotice } from '@/utils/notificationAttention';
 
 const store = useStore();
+const route = useRoute();
 const router = useRouter();
-const showNotifications = ref(false);
+const incoming = computed(() => store.getters['messenger/getNotifications'] || []);
+const visibleNotice = ref(null);
+const observed = new Set(incoming.value.map((event) => event.uid));
+let hideTimer = null;
 
-const unreadNotifications = computed(() => store.getters['messenger/getNotifications']);
-const hasUnreadNotifications = computed(() => store.getters['messenger/hasUnreadNotifications']);
-const shouldShowNotifications = computed(() => showNotifications.value && hasUnreadNotifications.value);
+const isActiveConversation = (notice) => isViewingNotificationTarget(
+    notice, route.name, route.params.uid,
+    store.getters['messenger/getActiveDialog'],
+);
 
-const toggleNotifications = () => {
-	showNotifications.value = !showNotifications.value;
+const heading = (notice) => notice.uid?.startsWith('space-reply:')
+    ? 'Ответ на ваше сообщение'
+    : notice.surface === 'space' ? 'Событие в пространстве' : 'Новое личное сообщение';
+
+const description = (notice) => notice.surface === 'space'
+    ? 'Откройте пространство, чтобы посмотреть сообщение.'
+    : 'Откройте Messenger, чтобы прочитать сообщение.';
+
+const dismiss = () => {
+    if (hideTimer) window.clearTimeout(hideTimer);
+    hideTimer = null;
+    visibleNotice.value = null;
 };
 
-const openNotification = async (notification) => {
-	store.commit('messenger/CLEAR_NOTIFICATIONS');
-	showNotifications.value = false;
+watch(incoming, (items) => {
+    const fresh = [...items].reverse().find((item) => (
+        !observed.has(item.uid) && shouldShowForegroundNotice(item, {
+            visibilityState: document.visibilityState,
+            routeName: route.name,
+            roomUid: route.params.uid,
+            activeDialog: store.getters['messenger/getActiveDialog'],
+        })
+    ));
+    for (const item of items) if (item.uid) observed.add(item.uid);
+    if (fresh) {
+        dismiss();
+        visibleNotice.value = fresh;
+        hideTimer = window.setTimeout(dismiss, 6500);
+    }
+}, { deep: true });
 
-	if (notification.surface === 'space' && notification.roomUid) {
-		await router.push({ name: 'space', params: { uid: notification.roomUid } });
-		return;
-	}
-
-	if (notification.userId) {
-		store.commit('messenger/SET_ACTIVE_DIALOG', notification.userId);
-	}
-	await router.push({ name: 'messenger' });
-};
-
-const formatDate = (timestamp) => new Date(timestamp).toLocaleTimeString([], {
-	hour: '2-digit',
-	minute: '2-digit',
+watch(() => route.fullPath, () => {
+    if (visibleNotice.value && isActiveConversation(visibleNotice.value)) dismiss();
 });
+
+const openNotification = async (notice) => {
+    dismiss();
+    store.commit('messenger/DISMISS_NOTIFICATION', notice.uid);
+    if (notice.surface === 'space' && notice.roomUid) {
+        // Navigating must work even when the read-status endpoint is unavailable.
+        await router.push({ name: 'space', params: { uid: notice.roomUid } });
+        if (notice.serverNotificationUid) {
+            try {
+                await NotificationService.markRead(notice.serverNotificationUid);
+                await store.dispatch('notifications/refreshUnread');
+            } catch {
+                // Keep the durable notification unread so it can be retried.
+            }
+        }
+    } else {
+        if (notice.userId) store.commit('messenger/SET_ACTIVE_DIALOG', notice.userId);
+        await router.push({ name: 'messenger' });
+    }
+};
+onUnmounted(dismiss);
 </script>
 
 <style scoped>
-.message-notifications {
-	position: absolute;
-	z-index: 9999;
-	display: inline-block;
+.incoming-notice {
+    position: fixed;
+    top: calc(4.25rem + env(safe-area-inset-top, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    z-index: 145;
+    width: min(390px, calc(100vw - 24px));
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ui-space-3);
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface-raised);
+    box-shadow: var(--ui-shadow-lg);
+    color: var(--ui-text);
 }
-
-.message-notifications > button {
-	background: transparent;
-	border: 0;
-	color: inherit;
-	cursor: pointer;
+.incoming-notice__icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: var(--ui-radius-md);
+    color: var(--ui-primary);
+    background: var(--ui-primary-soft);
 }
-
-.badge {
-	background: var(--ui-primary);
-	color: var(--ui-primary-contrast);
-	border-radius: 999px;
-	padding: 1px 6px;
-	font-size: 12px;
-	position: absolute;
-	top: -5px;
-	right: -5px;
+.incoming-notice__open {
+    flex: 1; min-width: 0;
+    display: grid; gap: 4px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
 }
-
-.dropdown {
-	position: absolute;
-	top: calc(100% + 8px);
-	left: 0;
-	width: min(320px, calc(100vw - 24px));
-	max-height: 400px;
-	overflow-y: auto;
-	background: var(--ui-surface-raised);
-	border: 1px solid var(--ui-border);
-	box-shadow: var(--ui-shadow-lg);
-	border-radius: var(--ui-radius-lg);
-	z-index: 1000;
+.incoming-notice__open strong { font-size: var(--ui-text-sm); }
+.incoming-notice__open span { color: var(--ui-text-muted); line-height: 1.4; }
+.incoming-notice__open small { color: var(--ui-primary); font-weight: 700; }
+.incoming-notice__close {
+    flex: 0 0 auto;
+    width: 2rem; height: 2rem;
+    display: grid; place-items: center;
+    background: transparent; border: 0;
+    color: var(--ui-text-muted);
+    border-radius: var(--ui-radius-md); cursor: pointer;
 }
-
-.notification-item {
-	width: 100%;
-	padding: 10px;
-	border: 0;
-	border-bottom: 1px solid var(--ui-border);
-	display: flex;
-	gap: 10px;
-	text-align: left;
-	background: transparent;
-	color: var(--ui-text);
-	cursor: pointer;
+.incoming-notice__close:hover { background: var(--ui-surface-muted); color: var(--ui-text); }
+.incoming-notice-enter-active, .incoming-notice-leave-active {
+    transition: opacity 220ms ease, transform 220ms ease;
 }
-
-.notification-item:last-child { border-bottom: 0; }
-.notification-item:hover { background: var(--ui-surface-soft); }
-
-.avatar {
-	width: 40px;
-	height: 40px;
-	border-radius: 50%;
-	object-fit: cover;
-	flex: 0 0 auto;
+.incoming-notice-enter-from, .incoming-notice-leave-to {
+    opacity: 0; transform: translateY(-12px);
 }
-
-.content {
-	min-width: 0;
-	flex: 1;
-	display: grid;
-	gap: 3px;
+@media (max-width: 720px) {
+    .incoming-notice {
+        top: calc(var(--ui-mobile-topbar-height, 3.5rem) + env(safe-area-inset-top, 0px) + 8px);
+        right: 12px;
+    }
 }
-
-.notification-text {
-	color: var(--ui-text-muted);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+@media (prefers-reduced-motion: reduce) {
+    .incoming-notice-enter-active, .incoming-notice-leave-active { transition-duration: 0.01ms; }
 }
-
-.content small { color: var(--ui-text-subtle); }
 </style>

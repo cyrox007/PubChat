@@ -5,7 +5,6 @@ import { useStore } from 'vuex';
 
 import HeaderComponent from './components/HeaderComponent/index.vue';
 import CallOverlay from '@/components/Calls/CallOverlay.vue';
-import ReplyNotifications from '@/components/Notifications/ReplyNotifications.vue';
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
@@ -136,6 +135,7 @@ const bootstrapAuthenticatedServices = async () => {
 	await Promise.all([
 		store.dispatch('messenger/connectMessenger'),
 		store.dispatch('notifications/sync').catch(() => null),
+        store.dispatch('notifications/refreshSoundPreference').catch(() => null),
 	]);
 	store.dispatch('notifications/startPolling');
 	const room = store.getters['chat/getCurrentRoom'];
@@ -176,6 +176,17 @@ const ensureSessionAndConnect = async () => {
 	return authenticatedBootstrap;
 };
 
+// A focused PWA suppresses duplicate OS banners. If realtime is down,
+// the service worker forwards the privacy-safe push event so the durable
+// inbox can still be surfaced without depending on a room socket.
+const handleServiceWorkerNotification = async (event) => {
+    const push = event.data;
+    if (push?.type !== 'pubchat:push-received' || !store.getters.isAuth) return;
+    // The backend durable inbox is authoritative. The poll deduplicates the
+    // realtime frame and only announces newly seen replies in a visible tab.
+    store.dispatch('notifications/pollInbox').catch(() => {});
+};
+
 const handleSessionExpired = async () => {
 	clearBootstrapRetry();
 	bootstrapRetryAttempt = 0;
@@ -208,6 +219,7 @@ onMounted(async () => {
 	window.addEventListener('pubchat:session-expired', handleSessionExpired);
 	window.addEventListener('offline', handleOffline);
 	window.addEventListener('online', handleOnline);
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerNotification);
 	await ensureSessionAndConnect();
 });
 
@@ -221,6 +233,7 @@ onUnmounted(() => {
 	window.removeEventListener('pubchat:session-expired', handleSessionExpired);
 	window.removeEventListener('offline', handleOffline);
 	window.removeEventListener('online', handleOnline);
+    navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerNotification);
 });
 
 watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
@@ -236,7 +249,6 @@ watch(() => store.getters.isAuth, (isAuthenticated, wasAuthenticated) => {
 
 <template>
 	<div class="app-shell" :class="{ 'app-shell--auth': isGuestAuthPage }">
-		<ReplyNotifications />
 		<MessageNotifications />
 		<CallOverlay />
 		<HeaderComponent />

@@ -114,6 +114,9 @@ export default {
 			if (key && state.notifications.some((item) => item.uid === key)) return;
 			state.notifications.push(notification);
 		},
+        DISMISS_NOTIFICATION(state, uid) {
+            state.notifications = state.notifications.filter((item) => item.uid !== uid);
+        },
 		MERGE_CONVERSATION(state, { userId, messages }) {
 			if (!state.conversations[userId]) state.conversations[userId] = [];
 			messages.forEach((message) => {
@@ -300,17 +303,50 @@ export default {
 					if (!isFromCurrentUser && shouldPlaySound) dispatch('playNotificationSound');
 					break;
 				}
-				case 'space_reply_notification': {
-					commit('ADD_SPACE_NOTIFICATION', {
-						uid: `space-reply:${data.notification_uid || data.message_uid}`,
-						surface: 'space',
-						content: 'Ответили на ваше сообщение в пространстве',
-						timestamp: new Date(data.created_at || Date.now()),
-						roomUid: data.room_uid,
-					});
-					dispatch('playSpaceNotificationSound');
-					break;
-				}
+                case 'space_reply_notification': {
+                    // Do not reannounce the same durable reply on the next
+                    // foreground fallback poll if its realtime frame arrived.
+                    if (data.notification_uid) {
+                        dispatch('notifications/recordReplyNotice', data.notification_uid, { root: true });
+                    }
+                    const viewingRoom = typeof document !== 'undefined'
+                        && document.visibilityState === 'visible'
+                        && typeof window !== 'undefined'
+                        && window.location.pathname.split('/')[1] === 'spaces'
+                        && window.location.pathname.split('/')[2] === String(data.room_uid);
+                    if (!viewingRoom) {
+                        commit('ADD_SPACE_NOTIFICATION', {
+                            uid: `space-reply:${data.notification_uid || data.message_uid}`,
+                            serverNotificationUid: data.notification_uid || null,
+                            surface: 'space',
+                            content: 'Ответили на ваше сообщение в пространстве',
+                            timestamp: new Date(data.created_at || Date.now()),
+                            roomUid: data.room_uid,
+                        });
+                        // Background OS audio comes from the browser; do not
+                        // replay foreground sound in a minimized tab.
+                        if (typeof document !== 'undefined'
+                            && document.visibilityState === 'visible'
+                            && rootGetters['notifications/spaceSound'] !== false) {
+                            dispatch('playSpaceNotificationSound');
+                        }
+                    }
+                    if (viewingRoom && data.notification_uid) {
+                        // Already reading the reply: suppress a pending push
+                        // without hiding the underlying room message.
+                        import('@/API/NotificationService').then(({ default: NotificationService }) =>
+                            NotificationService.markRead(data.notification_uid)
+                        ).catch(() => {}).finally(() =>
+                            dispatch('notifications/refreshUnread', null, { root: true }).catch(() => {})
+                        );
+                    } else {
+                        dispatch('notifications/refreshUnread', null, { root: true }).catch(() => {});
+                    }
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('pubchat:notifications-changed'));
+                    }
+                    break;
+                }
 				case 'space_message_notification': {
 					const shouldNotify = data.notification?.notify_in_app ?? true;
 					if (shouldNotify) {
