@@ -304,6 +304,11 @@ export default {
 					break;
 				}
                 case 'space_reply_notification': {
+                    // Do not reannounce the same durable reply on the next
+                    // foreground fallback poll if its realtime frame arrived.
+                    if (data.notification_uid) {
+                        dispatch('notifications/recordReplyNotice', data.notification_uid, { root: true });
+                    }
                     const viewingRoom = typeof document !== 'undefined'
                         && document.visibilityState === 'visible'
                         && typeof window !== 'undefined'
