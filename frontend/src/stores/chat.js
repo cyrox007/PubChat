@@ -3,6 +3,12 @@ import RealtimeService from '@/API/RealtimeService';
 
 let roomReconnectTimer = null;
 let roomHeartbeatTimer = null;
+let roomConnectTimer = null;
+
+const clearConnectTimer = () => {
+	if (roomConnectTimer) clearTimeout(roomConnectTimer);
+	roomConnectTimer = null;
+};
 let roomConnectionGeneration = 0;
 
 const clearReconnectTimer = () => {
@@ -156,6 +162,7 @@ export default {
 
 			clearReconnectTimer();
 			clearHeartbeatTimer();
+			clearConnectTimer();
 			roomConnectionGeneration += 1;
 			const generation = roomConnectionGeneration;
 
@@ -168,6 +175,19 @@ export default {
 			commit('setConnectionStatus', false);
 			commit('setConnectionState', isReconnect ? 'reconnecting' : 'connecting');
 			commit('setRealtimeNotice', null);
+
+            // Cover ticket retrieval, TCP/TLS establishment and the auth frame.
+            // Invalidate this attempt before closing so a late result cannot win.
+            roomConnectTimer = setTimeout(() => {
+                if (generation !== roomConnectionGeneration) return;
+                roomConnectionGeneration += 1;
+                roomConnectTimer = null;
+                const stalledSocket = state.socket;
+                commit('setSocket', null);
+                commit('setConnectionStatus', false);
+                try { stalledSocket?.close(4000, 'Connection timeout'); } catch { /* noop */ }
+                dispatch('scheduleReconnect', roomId);
+            }, 15000);
 
 			try {
 				const prepared = await RealtimeService.prepareSocket('room', roomId);
@@ -200,6 +220,7 @@ export default {
 							commit('setReconnectAttempt', 0);
 							commit('setRealtimeNotice', null);
 							clearHeartbeatTimer();
+							clearConnectTimer();
 							const heartbeatMs = Math.max(10, data.heartbeat_seconds || 25) * 1000;
 							roomHeartbeatTimer = setInterval(() => {
 								if (socket.readyState === WebSocket.OPEN) {
@@ -217,6 +238,7 @@ export default {
 				socket.onclose = (event) => {
 					if (generation !== roomConnectionGeneration) return;
 					clearHeartbeatTimer();
+					clearConnectTimer();
 					commit('setSocket', null);
 					commit('setConnectionStatus', false);
 
@@ -242,6 +264,7 @@ export default {
 			} catch (error) {
 				console.error('Не удалось подготовить realtime room socket:', error);
 				if (generation !== roomConnectionGeneration) return;
+                clearConnectTimer();
 				if ([403, 404].includes(error.response?.status)) {
 					commit('setConnectionState', 'restricted');
 					commit('setRealtimeNotice', {
@@ -355,6 +378,7 @@ export default {
 			roomConnectionGeneration += 1;
 			clearReconnectTimer();
 			clearHeartbeatTimer();
+			clearConnectTimer();
 			if (state.socket) {
 				try { state.socket.close(1000, 'Client disconnect'); } catch { /* noop */ }
 			}
