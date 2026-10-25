@@ -82,9 +82,9 @@ export default {
             return inboxRequest;
         },
         recordReplyNotice(_, uid) {
-            if (!uid) return;
-            if (observedReplyIds === null) observedReplyIds = new Set();
-            observedReplyIds.add(uid);
+            // The first inbox snapshot is always a silent baseline even if a
+            // realtime frame was delivered before it finished loading.
+            if (uid && observedReplyIds !== null) observedReplyIds.add(uid);
         },
         async refreshSoundPreference({ commit }) {
             const response = await NotificationService.messagePreferences();
