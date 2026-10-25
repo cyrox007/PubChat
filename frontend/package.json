@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:pwa": "node scripts/check-pwa.mjs",
+    "check:notifications": "node scripts/check-notification-experience.mjs",
     "check:lifecycle": "node scripts/check-app-lifecycle.mjs",
     "check:registration": "node scripts/check-registration-validation.mjs",
     "check:e2ee-verification": "node scripts/check-e2ee-verification.mjs",
