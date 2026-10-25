@@ -33,12 +33,12 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
                        "reply_to": {"uid": str(parent_uid), "sender": {"uid": str(other_uid)}}}
             db = MagicMock()
             route = room_reply_endpoint()
-            with patch.object(messages_routes, "load_message", new_callable=AsyncMock, return_value=parent), \\
-                 patch.object(messages_routes, "ensure_message_access", new_callable=AsyncMock), \\
-                 patch.object(messages_routes, "assert_allowed", new_callable=AsyncMock), \\
-                 patch.object(messages_routes, "active_room_member", new_callable=AsyncMock, return_value=True), \\
-                 patch.object(messages_routes, "inspect_plaintext_write", new_callable=AsyncMock), \\
-                 patch.object(Message, "create_message", new_callable=AsyncMock, return_value=created) as store, \\
+            with patch.object(messages_routes, "load_message", new_callable=AsyncMock, return_value=parent), \
+                 patch.object(messages_routes, "ensure_message_access", new_callable=AsyncMock), \
+                 patch.object(messages_routes, "assert_allowed", new_callable=AsyncMock), \
+                 patch.object(messages_routes, "active_room_member", new_callable=AsyncMock, return_value=True), \
+                 patch.object(messages_routes, "inspect_plaintext_write", new_callable=AsyncMock), \
+                 patch.object(Message, "create_message", new_callable=AsyncMock, return_value=created) as store, \
                  patch.object(messages_routes, "_publish_space_reply_after_commit", new_callable=AsyncMock) as deliver:
                 outcome = await route(
                     surface="room", message_uid=parent_uid,
@@ -58,8 +58,8 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
         async def check():
             db, room_uid, sender_uid, recipient_uid = MagicMock(), uuid4(), uuid4(), uuid4()
             created = {"uid": str(uuid4()), "reply_to": {"uid": str(uuid4())}}
-            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock) as broadcast, \\
-                 patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, return_value=recipient_uid) as queue, \\
+            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock) as broadcast, \
+                 patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, return_value=recipient_uid) as queue, \
                  patch.object(messages_routes, "notify_online_space_members", new_callable=AsyncMock) as generic:
                 await messages_routes._publish_space_reply_after_commit(
                     db, room_uid=room_uid, sender_uid=sender_uid, created=created,
@@ -79,8 +79,8 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
         async def check():
             db = MagicMock()
             db.rollback = AsyncMock()
-            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock, side_effect=RuntimeError("realtime outage")), \\
-                 patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, side_effect=RuntimeError("push outage")), \\
+            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock, side_effect=RuntimeError("realtime outage")), \
+                 patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, side_effect=RuntimeError("push outage")), \
                  patch.object(messages_routes, "notify_online_space_members", new_callable=AsyncMock):
                 await messages_routes._publish_space_reply_after_commit(
                     db, room_uid=uuid4(), sender_uid=uuid4(),
