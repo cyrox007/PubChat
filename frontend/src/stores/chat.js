@@ -160,6 +160,12 @@ export default {
 			const isReconnect = typeof payload === 'object' && payload?.reconnect;
 			if (!roomId) return;
 
+            // Room view and authenticated bootstrap may request the same room.
+            // Keep the existing ticket/handshake instead of cancelling it.
+            if (!isReconnect && state.intendedRoomId === roomId && (
+                roomConnectTimer || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)
+            )) return;
+
 			clearReconnectTimer();
 			clearHeartbeatTimer();
 			clearConnectTimer();

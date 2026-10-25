@@ -100,13 +100,17 @@ async def authenticate_websocket(
     websocket.state.session_uid = ticket_payload.get("session_uid")
     websocket.state.device_uid = ticket_payload.get("device_uid")
 
-    await websocket.send_json(
-        {
-            "type": "realtime_ready",
-            "protocol": 2,
-            "target": target,
-            "resource_uid": str(resource_uid) if resource_uid else None,
-            "heartbeat_seconds": config.REALTIME_HEARTBEAT_SECONDS,
-        }
-    )
+    try:
+        await websocket.send_json(
+            {
+                "type": "realtime_ready",
+                "protocol": 2,
+                "target": target,
+                "resource_uid": str(resource_uid) if resource_uid else None,
+                "heartbeat_seconds": config.REALTIME_HEARTBEAT_SECONDS,
+            }
+        )
+    except WebSocketDisconnect:
+        # A replaced or closed client may disappear after ticket validation.
+        return None
     return user_data
