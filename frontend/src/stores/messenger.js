@@ -320,7 +320,9 @@ export default {
                         });
                         // Background OS audio comes from the browser; do not
                         // replay foreground sound in a minimized tab.
-                        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+                        if (typeof document !== 'undefined'
+                            && document.visibilityState === 'visible'
+                            && rootGetters['notifications/spaceSound'] !== false) {
                             dispatch('playSpaceNotificationSound');
                         }
                     }
