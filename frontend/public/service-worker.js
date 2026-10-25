@@ -117,7 +117,20 @@ self.addEventListener('push', (event) => {
       && client.focused === true
       && client.visibilityState === 'visible'
     ));
-    if (viewingApp) return;
+    if (viewingApp) {
+      // The focused tab is responsible for an in-app notice; notify it even
+      // when its realtime socket has temporarily disconnected. Forward only
+      // the generic event type and Space UID, never peer or message content.
+      await Promise.all(windows
+        .filter((client) => new URL(client.url).origin === self.location.origin
+          && client.focused === true && client.visibilityState === 'visible')
+        .map((client) => client.postMessage({
+          type: 'pubchat:push-received',
+          eventType: payload.type,
+          roomUid: payload.room_uid || null,
+        })));
+      return;
+    }
     await self.registration.showNotification(title, {
       body,
       tag,
