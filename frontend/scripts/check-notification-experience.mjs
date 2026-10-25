@@ -52,8 +52,12 @@ assert.match(notificationView, /item\.kind === 'space_reply' \? 'space' : 'space
     'Clicking a direct reply must open the Space conversation, not its Life tab');
 assert.match(store, /POLL_INTERVAL_MS = 30000/,
     'Foreground fallback updates should run within a reasonable interval');
-assert.match(store, /dispatch\('refreshUnread'\)/,
-    'Fast badge refresh must be read-only, not sync reminders');
+assert.match(store, /dispatch\('pollInbox'\)/,
+    'The foreground fallback should read the durable inbox instead of writing reminders');
+assert.match(store, /NotificationService\.list\(\{ limit: 50 \}\)/,
+    'Foreground recovery must read the first-party personal notification ledger');
+assert.match(store, /observedReplyIds !== null/,
+    'Historical unread must be primed silently rather than reannounced');
 assert.match(messenger, /serverNotificationUid: data\.notification_uid/,
     'Realtime reply should retain the durable notification ID for read receipts');
 
