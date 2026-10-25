@@ -1,7 +1,9 @@
 import NotificationService from '@/API/NotificationService';
 
-const POLL_INTERVAL_MS = 180000;
+// Keep the badge current if the realtime connection is unavailable.
+const POLL_INTERVAL_MS = 30000;
 let pollingTimer = null;
+let refreshOnFocus = null;
 
 const normalizeUnread = (value) => Math.max(0, Number(value) || 0);
 
@@ -58,19 +60,27 @@ export default {
 			commit('setInitialized', false);
 			commit('setSyncing', false);
 		},
-		startPolling({ dispatch }) {
-			if (pollingTimer) return;
-			pollingTimer = window.setInterval(() => {
-				dispatch('sync').catch(() => {
-					// Polling is best-effort and must never break the app shell.
-				});
-			}, POLL_INTERVAL_MS);
-		},
-		stopPolling() {
-			if (!pollingTimer) return;
-			window.clearInterval(pollingTimer);
-			pollingTimer = null;
-		},
+        startPolling({ dispatch }) {
+            if (pollingTimer) return;
+            // Polling is read-only. Reminder sync must not run every 30 sec.
+            refreshOnFocus = () => {
+                if (document.visibilityState === 'visible') {
+                    dispatch('refreshUnread').catch(() => {});
+                }
+            };
+            pollingTimer = window.setInterval(refreshOnFocus, POLL_INTERVAL_MS);
+            window.addEventListener('focus', refreshOnFocus);
+            document.addEventListener('visibilitychange', refreshOnFocus);
+        },
+        stopPolling() {
+            if (pollingTimer) window.clearInterval(pollingTimer);
+            pollingTimer = null;
+            if (refreshOnFocus) {
+                window.removeEventListener('focus', refreshOnFocus);
+                document.removeEventListener('visibilitychange', refreshOnFocus);
+            }
+            refreshOnFocus = null;
+        },
 	},
 };
 
