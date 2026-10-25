@@ -13,11 +13,13 @@ export default {
 		unread: 0,
 		syncing: false,
 		initialized: false,
+        spaceSound: true,
 	},
 	getters: {
 		unread: (state) => state.unread,
 		syncing: (state) => state.syncing,
 		initialized: (state) => state.initialized,
+        spaceSound: (state) => state.spaceSound,
 	},
 	mutations: {
 		setUnread(state, value) {
@@ -29,6 +31,9 @@ export default {
 		setInitialized(state, value) {
 			state.initialized = Boolean(value);
 		},
+        setSpaceSound(state, value) {
+            state.spaceSound = Boolean(value);
+        },
 	},
 	actions: {
 		async refreshUnread({ commit }) {
@@ -37,6 +42,13 @@ export default {
 			commit('setInitialized', true);
 			return response.data.unread;
 		},
+        async refreshSoundPreference({ commit }) {
+            const response = await NotificationService.messagePreferences();
+            commit('setSpaceSound', response.data?.preferences?.space_sound !== false);
+        },
+        setSpaceSound({ commit }, value) {
+            commit('setSpaceSound', value);
+        },
 		async sync({ commit, state }) {
 			if (state.syncing) return state.unread;
 			commit('setSyncing', true);
@@ -59,6 +71,7 @@ export default {
 			commit('setUnread', 0);
 			commit('setInitialized', false);
 			commit('setSyncing', false);
+            commit('setSpaceSound', true);
 		},
         startPolling({ dispatch }) {
             if (pollingTimer) return;
