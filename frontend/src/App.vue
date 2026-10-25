@@ -6,7 +6,6 @@ import { useStore } from 'vuex';
 import HeaderComponent from './components/HeaderComponent/index.vue';
 import CallOverlay from '@/components/Calls/CallOverlay.vue';
 import MessageNotifications from './components/Notifications/MessageNotifications.vue';
-import NotificationService from '@/API/NotificationService';
 import PwaInstallPrompt from '@/components/Pwa/PwaInstallPrompt.vue';
 import PwaUpdateNotice from '@/components/Pwa/PwaUpdateNotice.vue';
 
@@ -183,27 +182,9 @@ const ensureSessionAndConnect = async () => {
 const handleServiceWorkerNotification = async (event) => {
     const push = event.data;
     if (push?.type !== 'pubchat:push-received' || !store.getters.isAuth) return;
-    store.dispatch('notifications/refreshUnread').catch(() => {});
-    window.dispatchEvent(new CustomEvent('pubchat:notifications-changed'));
-    if (push.eventType !== 'space_reply') return;
-    try {
-        const response = await NotificationService.list({ limit: 25 });
-        const reply = (response.data?.notifications || []).find((item) => (
-            item.kind === 'space_reply' && !item.is_read
-            && String(item.context_space_uid) === String(push.roomUid)
-        ));
-        if (!reply) return;
-        store.commit('messenger/ADD_SPACE_NOTIFICATION', {
-            uid: `space-reply:${reply.uid}`,
-            serverNotificationUid: reply.uid,
-            surface: 'space',
-            content: 'Ответили на ваше сообщение в пространстве',
-            roomUid: reply.context_space_uid,
-            timestamp: new Date(reply.created_at || Date.now()),
-        });
-    } catch {
-        // The server-owned inbox remains durable and will be checked on focus.
-    }
+    // The backend durable inbox is authoritative. The poll deduplicates the
+    // realtime frame and only announces newly seen replies in a visible tab.
+    store.dispatch('notifications/pollInbox').catch(() => {});
 };
 
 const handleSessionExpired = async () => {
