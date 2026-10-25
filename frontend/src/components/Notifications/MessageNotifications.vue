@@ -22,6 +22,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import NotificationService from '@/API/NotificationService';
+import { isViewingNotificationTarget, shouldShowForegroundNotice } from '@/utils/notificationAttention';
 
 const store = useStore();
 const route = useRoute();
@@ -31,13 +32,9 @@ const visibleNotice = ref(null);
 const observed = new Set(incoming.value.map((event) => event.uid));
 let hideTimer = null;
 
-const isActiveConversation = (notice) => (
-    (notice.surface === 'space'
-        && String(route.name || '').startsWith('space')
-        && String(route.params.uid || '') === String(notice.roomUid || ''))
-    || (notice.surface === 'messenger'
-        && route.name === 'messenger'
-        && store.getters['messenger/getActiveDialog'] === notice.userId)
+const isActiveConversation = (notice) => isViewingNotificationTarget(
+    notice, route.name, route.params.uid,
+    store.getters['messenger/getActiveDialog'],
 );
 
 const heading = (notice) => notice.uid?.startsWith('space-reply:')
@@ -56,10 +53,12 @@ const dismiss = () => {
 
 watch(incoming, (items) => {
     const fresh = [...items].reverse().find((item) => (
-        item.uid && !observed.has(item.uid)
-        && document.visibilityState === 'visible'
-        && route.name !== 'notifications'
-        && !isActiveConversation(item)
+        !observed.has(item.uid) && shouldShowForegroundNotice(item, {
+            visibilityState: document.visibilityState,
+            routeName: route.name,
+            roomUid: route.params.uid,
+            activeDialog: store.getters['messenger/getActiveDialog'],
+        })
     ));
     for (const item of items) if (item.uid) observed.add(item.uid);
     if (fresh) {
@@ -67,7 +66,7 @@ watch(incoming, (items) => {
         visibleNotice.value = fresh;
         hideTimer = window.setTimeout(dismiss, 6500);
     }
-});
+}, { deep: true });
 
 watch(() => route.fullPath, () => {
     if (visibleNotice.value && isActiveConversation(visibleNotice.value)) dismiss();
