@@ -17,6 +17,9 @@ const bootstrapError = ref(false);
 let authenticatedBootstrap = null;
 let bootstrapRetryTimer = null;
 let bootstrapRetryAttempt = 0;
+let tabHiddenSince = null;
+let lastWakeReconnectAt = 0;
+const IOS_WAKE_RECONNECT_AFTER_MS = 45000;
 const routePending = ref(false);
 let routeStartTimer = null;
 let routeFinishTimer = null;
@@ -209,6 +212,45 @@ const handleOffline = () => {
 	clearBootstrapRetry();
 };
 
+// iOS Safari freezes background timers and can restore a page from BFCache
+// with WebSocket.readyState still OPEN even after server presence expired.
+// A long suspension needs a fresh one-time ticket, not an old dead socket.
+const reconnectAfterWake = async (force = false) => {
+    if (!store.getters.isAuth || !navigator.onLine) return;
+    if (force && Date.now() - lastWakeReconnectAt > 5000) {
+        lastWakeReconnectAt = Date.now();
+        // Keep message history, but re-establish transport and presence.
+        const roomUid = store.getters['chat/getCurrentRoom']?.uid;
+        await Promise.all([
+            store.dispatch('messenger/disconnectMessenger'),
+            store.dispatch('chat/disconnectSocket'),
+        ]);
+        if (!store.getters.isAuth) return;
+        store.dispatch('messenger/connectMessenger');
+        if (roomUid) store.dispatch('chat/connectSocket', roomUid);
+    } else {
+        store.dispatch('messenger/reconnectIfNeeded');
+        store.dispatch('chat/reconnectIfNeeded');
+    }
+    store.dispatch('notifications/pollInbox').catch(() => {});
+};
+
+const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+        tabHiddenSince = Date.now();
+        return;
+    }
+    if (document.visibilityState === 'visible') {
+        const backgroundDuration = tabHiddenSince ? Date.now() - tabHiddenSince : 0;
+        tabHiddenSince = null;
+        reconnectAfterWake(backgroundDuration >= IOS_WAKE_RECONNECT_AFTER_MS).catch(() => {});
+    }
+};
+
+const handlePageShow = (event) => {
+    if (event.persisted) reconnectAfterWake(true).catch(() => {});
+};
+
 const handleOnline = () => {
 	networkOnline.value = true;
 	bootstrapError.value = false;
@@ -226,6 +268,8 @@ onMounted(async () => {
 	window.addEventListener('pubchat:session-expired', handleSessionExpired);
 	window.addEventListener('offline', handleOffline);
 	window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
     navigator.serviceWorker?.addEventListener('message', handleServiceWorkerNotification);
 	await ensureSessionAndConnect();
 });
@@ -240,6 +284,8 @@ onUnmounted(() => {
 	window.removeEventListener('pubchat:session-expired', handleSessionExpired);
 	window.removeEventListener('offline', handleOffline);
 	window.removeEventListener('online', handleOnline);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('pageshow', handlePageShow);
     navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerNotification);
 });
 
