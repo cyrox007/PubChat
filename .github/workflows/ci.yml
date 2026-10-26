@@ -201,6 +201,7 @@ jobs:
       - name: Check room connection timeout recovery
         run: |
           node scripts/check-room-connect-timeout.mjs
+          node scripts/check-messenger-connect-timeout.mjs
           node scripts/check-session-network-recovery.mjs
       - name: Install dependencies
         run: npm ci
