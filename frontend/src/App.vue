@@ -264,7 +264,9 @@ const handleOnline = () => {
 };
 
 onMounted(async () => {
-	await store.dispatch('initializeUser');
+    // main.js has already initialized and (when possible) verified the session.
+    // Re-running initialization here would invalidate that proof and issue
+    // another blocking identity request on every reload.
 	window.addEventListener('pubchat:session-expired', handleSessionExpired);
 	window.addEventListener('offline', handleOffline);
 	window.addEventListener('online', handleOnline);
