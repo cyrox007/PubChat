@@ -14,6 +14,7 @@
     "check:e2ee-verification": "node scripts/check-e2ee-verification.mjs",
     "check:public-assets": "node scripts/check-public-asset-urls.mjs",
     "check:room-connect": "node scripts/check-room-connect-timeout.mjs",
+    "check:messenger-connect": "node scripts/check-messenger-connect-timeout.mjs",
     "check:session-network": "node scripts/check-session-network-recovery.mjs"
   },
   "dependencies": {
