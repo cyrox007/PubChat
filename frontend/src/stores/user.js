@@ -25,12 +25,16 @@ export default {
 		auth: hasSessionHint,
 		user: cachedUser,
 		identity: cachedIdentity,
+        // Cached profile data is only a shell. It is not verified for this tab
+        // until login or a fresh /identity/v2/me response succeeds.
+        identityValidated: false,
 		userStatuses: {},
 	},
 	getters: {
 		isAuth: (state) => state.auth,
 		getUser: (state) => state.user,
 		getIdentity: (state) => state.identity,
+        isIdentityValidated: (state) => state.identityValidated,
 		getPersona: (state) => state.identity?.persona || null,
 		getAccount: (state) => state.identity?.account || null,
 		getAccessRestriction: (state) => state.identity?.access_restriction || null,
@@ -53,6 +57,9 @@ export default {
 				localStorage.removeItem('user');
 			}
 		},
+        setIdentityValidated(state, valid) {
+            state.identityValidated = Boolean(valid);
+        },
 		setIdentity(state, identity) {
 			state.identity = identity ? { ...identity } : null;
 			if (identity) {
@@ -82,6 +89,7 @@ export default {
 			commit('setUser', null);
 			commit('setIdentity', null);
 			commit('setAuth', false);
+            commit('setIdentityValidated', false);
 			// Clear visible identity before waiting for browser push cleanup.
 			await dropLocalWebPushSubscription().catch(() => null);
 		},
@@ -102,6 +110,7 @@ export default {
 				access_restriction: responseData.access_restriction || null,
 			});
 			commit('setAuth', true);
+            commit('setIdentityValidated', true);
 		},
 		async logout({ dispatch }) {
 			try {
@@ -115,6 +124,7 @@ export default {
 			return true;
 		},
 		initializeUser({ commit }) {
+            commit('setIdentityValidated', false);
 			const user = readJSON('user');
 			const identity = readJSON('identity');
 			const sessionHint = localStorage.getItem('auth') === 'true';
@@ -167,6 +177,7 @@ export default {
 					access_restriction: response.data.access_restriction || null,
 				});
 				commit('setAuth', true);
+                commit('setIdentityValidated', true);
 				return response.data;
 			} catch (error) {
 				if (error.response?.status === 401) await dispatch('clearUser');
