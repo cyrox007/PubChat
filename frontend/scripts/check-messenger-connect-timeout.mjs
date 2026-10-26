@@ -45,8 +45,11 @@ try {
   await module.actions.connectMessenger(ctx);
   module.actions.reconnectIfNeeded(ctx);
   assert.equal(ticketRequests, 1, 'Only one pending ticket is allowed on reconnect and foreground');
-  const watchdog = [...scheduled.values()].find((x) => x.ms === 15000);
-  assert.ok(watchdog, 'Messenger must bound its ticket+socket+auth handshake');
+  const pendingTimer = [...scheduled.entries()].find(([, value]) => value.ms === 15000);
+  assert.ok(pendingTimer, 'Messenger must bound its ticket+socket+auth handshake');
+  const [watchdogId, watchdog] = pendingTimer;
+  // A real setTimeout automatically consumes its scheduled slot before firing.
+  scheduled.delete(watchdogId);
   watchdog.fn();
   assert.equal(events.at(-1)[0], 'scheduleReconnect');
   let lateClosed = false;
