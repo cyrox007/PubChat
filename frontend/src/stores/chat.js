@@ -162,7 +162,7 @@ export default {
 
             // Room view and authenticated bootstrap may request the same room.
             // Keep the existing ticket/handshake instead of cancelling it.
-            if (!isReconnect && state.intendedRoomId === roomId && (
+            if (state.intendedRoomId === roomId && (
                 roomConnectTimer || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)
             )) return;
 
@@ -248,11 +248,9 @@ export default {
 					commit('setSocket', null);
 					commit('setConnectionStatus', false);
 
-					if (event.code === 1000) {
-						commit('setConnectionState', 'idle');
-						return;
-					}
-					if (event.code === 4001 || event.code === 1008) {
+                    // Local disconnect/replacement already invalidated the
+                    // connection generation. Remote 1000 still needs reconnect.
+                    if (event.code === 4001 || event.code === 4003 || event.code === 1008) {
 						commit('setConnectionState', 'restricted');
 						commit('setRealtimeNotice', {
 							type: 'restricted',
@@ -295,10 +293,11 @@ export default {
 			}, delay);
 		},
 
-		reconnectIfNeeded({ state, dispatch }) {
-			if (!state.intendedRoomId || state.isConnected) return;
-			dispatch('connectSocket', { roomId: state.intendedRoomId, reconnect: true });
-		},
+        reconnectIfNeeded({ state, dispatch }) {
+            if (!state.intendedRoomId || state.isConnected || roomConnectTimer
+                || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)) return;
+            dispatch('connectSocket', { roomId: state.intendedRoomId, reconnect: true });
+        },
 
 		async handleSocketMessage({ commit, dispatch, rootGetters, state }, data) {
 			const currentUserId = rootGetters.getUser?.uid;
