@@ -26,6 +26,17 @@ const avatarContainerSelector = [
 	'.persona-trigger',
 ].join(',');
 
+// Keep legacy icon compatibility without waiting for a third-party CDN
+// before the application can paint. Dynamic stylesheets do not block parsing.
+const loadOptionalIconStyles = () => {
+    if (document.getElementById('pubchat-optional-icons')) return;
+    const link = document.createElement('link');
+    link.id = 'pubchat-optional-icons';
+    link.rel = 'stylesheet';
+    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css';
+    document.head.appendChild(link);
+};
+
 const installPublicImageRecovery = () => {
 	document.addEventListener('error', (event) => {
 		const image = event.target;
@@ -46,6 +57,7 @@ const installPublicImageRecovery = () => {
 };
 
 const bootstrap = async () => {
+    loadOptionalIconStyles();
 	installPublicImageRecovery();
 	await store.dispatch('initializeUser');
 	if (store.getters.isAuth) {
