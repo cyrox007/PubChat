@@ -30,6 +30,9 @@ await store.actions.connectSocket(ctx, 'room-test');
 socket.onopen(); assert.equal(state.connectionState, 'authenticating');
 socket.onmessage({data: JSON.stringify({type:'realtime_ready'})});
 assert.equal(state.connectionState,'connected');
+// When the server rolls a worker, 1000 is not an intentional local logout.
+socket.onclose({code: 1000, reason: 'worker reload'});
+assert.equal(events.at(-1)[0], 'scheduleReconnect', 'Unexpected remote 1000 must reconnect');
 await store.actions.connectSocket(ctx, 'room-test');
 assert.equal(state.socket,socket);
 assert.equal(socketCloses,0,'duplicate bootstrap must keep the healthy room socket');
