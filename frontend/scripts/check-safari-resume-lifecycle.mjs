@@ -30,6 +30,8 @@ assert.match(user, /identityValidated: false/,
   'Cached identity is not verified for the new browser tab');
 assert.match(user, /commit\('setIdentityValidated', true\)/,
   'Only verified server identity should skip bootstrap sync');
+assert.doesNotMatch(app, /await store\.dispatch\('initializeUser'\)/,
+  'App shell must not invalidate verified identity restored by main.js');
 assert.match(entry, /await store\.dispatch\('restoreSessionAccess'\)/,
   'Browser must obtain a fresh access token before protected route mount');
 assert.match(room, /Remote 1000 still needs reconnect/,
