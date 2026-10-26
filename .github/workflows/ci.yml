@@ -203,6 +203,7 @@ jobs:
           node scripts/check-room-connect-timeout.mjs
           node scripts/check-messenger-connect-timeout.mjs
           node scripts/check-safari-resume-lifecycle.mjs
+          node scripts/check-first-paint.mjs
           node scripts/check-session-network-recovery.mjs
       - name: Install dependencies
         run: npm ci
