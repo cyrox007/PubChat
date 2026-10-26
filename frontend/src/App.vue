@@ -131,18 +131,25 @@ const stopAuthenticatedServices = async () => {
 };
 
 const bootstrapAuthenticatedServices = async () => {
-	await store.dispatch('syncIdentity');
-	await Promise.all([
-		store.dispatch('messenger/connectMessenger'),
-		store.dispatch('notifications/sync').catch(() => null),
-        store.dispatch('notifications/refreshSoundPreference').catch(() => null),
-	]);
-	store.dispatch('notifications/startPolling');
-	const room = store.getters['chat/getCurrentRoom'];
-	if (room?.uid) await store.dispatch('chat/connectSocket', room.uid);
-	bootstrapError.value = false;
-	bootstrapRetryAttempt = 0;
-	clearBootstrapRetry();
+    // main.js already refreshed the session and verified /me before mounting.
+    // Login also verified the identity. Re-query only after a failed verification,
+    // instead of repeating a slow profile request on every successful startup.
+    if (!store.getters.isIdentityValidated) {
+        await store.dispatch('syncIdentity');
+    }
+    store.dispatch('notifications/startPolling');
+    const room = store.getters['chat/getCurrentRoom'];
+    // Messenger ticket stalls must never delay the Space WebSocket.
+    // Independent channels start in parallel; each has its own retry policy.
+    await Promise.allSettled([
+        store.dispatch('messenger/connectMessenger'),
+        room?.uid ? store.dispatch('chat/connectSocket', room.uid) : Promise.resolve(),
+        store.dispatch('notifications/sync'),
+        store.dispatch('notifications/refreshSoundPreference'),
+    ]);
+    bootstrapError.value = false;
+    bootstrapRetryAttempt = 0;
+    clearBootstrapRetry();
 };
 
 const scheduleBootstrapRetry = () => {
