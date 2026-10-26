@@ -308,6 +308,11 @@ jobs:
       - name: Install browser engines
         working-directory: frontend
         run: /tmp/pubchat-playwright/node_modules/.bin/playwright install --with-deps chromium firefox webkit
+      - name: Probe public production in Safari-like mobile WebKit
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 179 }}
+        continue-on-error: true
+        working-directory: frontend
+        run: node scripts/probe-production-webkit.mjs
       - name: Prepare browser database
         working-directory: backend
         run: alembic upgrade head
