@@ -3,6 +3,12 @@ import RealtimeService from '@/API/RealtimeService';
 
 let roomReconnectTimer = null;
 let roomHeartbeatTimer = null;
+let roomConnectTimer = null;
+
+const clearConnectTimer = () => {
+	if (roomConnectTimer) clearTimeout(roomConnectTimer);
+	roomConnectTimer = null;
+};
 let roomConnectionGeneration = 0;
 
 const clearReconnectTimer = () => {
@@ -154,8 +160,15 @@ export default {
 			const isReconnect = typeof payload === 'object' && payload?.reconnect;
 			if (!roomId) return;
 
+            // Room view and authenticated bootstrap may request the same room.
+            // Keep the existing ticket/handshake instead of cancelling it.
+            if (state.intendedRoomId === roomId && (
+                roomConnectTimer || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)
+            )) return;
+
 			clearReconnectTimer();
 			clearHeartbeatTimer();
+			clearConnectTimer();
 			roomConnectionGeneration += 1;
 			const generation = roomConnectionGeneration;
 
@@ -168,6 +181,19 @@ export default {
 			commit('setConnectionStatus', false);
 			commit('setConnectionState', isReconnect ? 'reconnecting' : 'connecting');
 			commit('setRealtimeNotice', null);
+
+            // Cover ticket retrieval, TCP/TLS establishment and the auth frame.
+            // Invalidate this attempt before closing so a late result cannot win.
+            roomConnectTimer = setTimeout(() => {
+                if (generation !== roomConnectionGeneration) return;
+                roomConnectionGeneration += 1;
+                roomConnectTimer = null;
+                const stalledSocket = state.socket;
+                commit('setSocket', null);
+                commit('setConnectionStatus', false);
+                try { stalledSocket?.close(4000, 'Connection timeout'); } catch { /* noop */ }
+                dispatch('scheduleReconnect', roomId);
+            }, 15000);
 
 			try {
 				const prepared = await RealtimeService.prepareSocket('room', roomId);
@@ -200,6 +226,7 @@ export default {
 							commit('setReconnectAttempt', 0);
 							commit('setRealtimeNotice', null);
 							clearHeartbeatTimer();
+							clearConnectTimer();
 							const heartbeatMs = Math.max(10, data.heartbeat_seconds || 25) * 1000;
 							roomHeartbeatTimer = setInterval(() => {
 								if (socket.readyState === WebSocket.OPEN) {
@@ -217,14 +244,13 @@ export default {
 				socket.onclose = (event) => {
 					if (generation !== roomConnectionGeneration) return;
 					clearHeartbeatTimer();
+					clearConnectTimer();
 					commit('setSocket', null);
 					commit('setConnectionStatus', false);
 
-					if (event.code === 1000) {
-						commit('setConnectionState', 'idle');
-						return;
-					}
-					if (event.code === 4001 || event.code === 1008) {
+                    // Local disconnect/replacement already invalidated the
+                    // connection generation. Remote 1000 still needs reconnect.
+                    if (event.code === 4001 || event.code === 4003 || event.code === 1008) {
 						commit('setConnectionState', 'restricted');
 						commit('setRealtimeNotice', {
 							type: 'restricted',
@@ -242,6 +268,7 @@ export default {
 			} catch (error) {
 				console.error('Не удалось подготовить realtime room socket:', error);
 				if (generation !== roomConnectionGeneration) return;
+                clearConnectTimer();
 				if ([403, 404].includes(error.response?.status)) {
 					commit('setConnectionState', 'restricted');
 					commit('setRealtimeNotice', {
@@ -266,10 +293,11 @@ export default {
 			}, delay);
 		},
 
-		reconnectIfNeeded({ state, dispatch }) {
-			if (!state.intendedRoomId || state.isConnected) return;
-			dispatch('connectSocket', { roomId: state.intendedRoomId, reconnect: true });
-		},
+        reconnectIfNeeded({ state, dispatch }) {
+            if (!state.intendedRoomId || state.isConnected || roomConnectTimer
+                || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)) return;
+            dispatch('connectSocket', { roomId: state.intendedRoomId, reconnect: true });
+        },
 
 		async handleSocketMessage({ commit, dispatch, rootGetters, state }, data) {
 			const currentUserId = rootGetters.getUser?.uid;
@@ -355,6 +383,7 @@ export default {
 			roomConnectionGeneration += 1;
 			clearReconnectTimer();
 			clearHeartbeatTimer();
+			clearConnectTimer();
 			if (state.socket) {
 				try { state.socket.close(1000, 'Client disconnect'); } catch { /* noop */ }
 			}

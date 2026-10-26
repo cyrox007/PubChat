@@ -9,6 +9,7 @@ const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
 const $api = axios.create({
     withCredentials: true,
+    timeout: 15000,
     baseURL: API_BASE_URL,
 });
 
@@ -46,6 +47,7 @@ export const ensureCsrfToken = async (force = false) => {
     csrfPromise = axios.get(`${API_BASE_URL}/csrf/get`, {
         withCredentials: true,
         headers: { 'Cache-Control': 'no-cache', [AUTH_DEVICE_HEADER]: getAuthDeviceId() },
+        timeout: 5000,
     }).then((response) => {
         const token = response.data?.csrf_token;
         if (!token || typeof token !== 'string') {
@@ -115,6 +117,7 @@ $api.interceptors.response.use(
         const status = error.response?.status;
         const detail = error.response?.data?.detail;
         const isIdentityRefresh = originalRequest?.url?.includes('/identity/v2/refresh');
+        const isIdentityLogin = originalRequest?.url?.includes('/identity/v2/login');
         const isCsrfFailure = status === 403 && typeof detail === 'string' && detail.includes('CSRF');
         const isAccountAccessRestriction = (
             status === 403
@@ -141,7 +144,7 @@ $api.interceptors.response.use(
             }
         }
 
-        if (status === 401 && !originalRequest?._isRetry && !isIdentityRefresh) {
+        if (status === 401 && !originalRequest?._isRetry && !isIdentityRefresh && !isIdentityLogin) {
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
                     failedQueue.push({ resolve, reject, request: originalRequest });
@@ -158,6 +161,7 @@ $api.interceptors.response.use(
                     {},
                     {
                         withCredentials: true,
+                        timeout: 10000,
                         headers: {
                             [CSRF_HEADER_NAME]: csrf,
                             [AUTH_DEVICE_HEADER]: getAuthDeviceId(),
@@ -176,7 +180,8 @@ $api.interceptors.response.use(
                 return $api(originalRequest);
             } catch (refreshError) {
                 processQueue(refreshError);
-                expireSession();
+                // A transport failure or server outage does not revoke a session.
+                if (refreshError.response?.status === 401) expireSession();
                 return Promise.reject(refreshError);
             } finally {
                 isRefreshing = false;

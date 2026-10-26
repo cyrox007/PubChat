@@ -44,7 +44,8 @@ async def eligible_space_reply(
 ) -> bool:
     if sender_account_uid == recipient_account_uid:
         return False
-    room = await db.get(Room, room_uid)
+    # Room has an integer primary key; public room references use Room.uid.
+    room = await Room.get_room_by_uid(db, room_uid)
     if room is None or not room.is_active:
         return False
     membership = (await db.execute(

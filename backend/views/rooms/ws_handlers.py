@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.websockets import WebSocketState
 
 from components.decorators.db import get_realtime_session, release_realtime_session
 from components.message.model import Message
@@ -649,6 +650,15 @@ async def handle_websocket_connection(
         )
     except WebSocketDisconnect:
         logger.info("Room realtime disconnected: user=%s room=%s", user_uid, normalized_room_uid)
+    except RuntimeError:
+        if getattr(websocket, "application_state", None) == WebSocketState.DISCONNECTED:
+            logger.info("Room socket closed during initialization or delivery")
+        else:
+            logger.exception("Room realtime handler failed")
+            try:
+                await websocket.close(code=1011, reason="Realtime room error")
+            except Exception:
+                pass
     except Exception:
         logger.exception("Room realtime handler failed")
         try:
@@ -656,5 +666,5 @@ async def handle_websocket_connection(
         except Exception:
             pass
     finally:
-        if connected:
-            await manager.disconnect(websocket, normalized_room_uid)
+        # Registration can succeed before initialization finishes.
+        await manager.disconnect(websocket, normalized_room_uid)

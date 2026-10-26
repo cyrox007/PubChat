@@ -17,6 +17,9 @@ const bootstrapError = ref(false);
 let authenticatedBootstrap = null;
 let bootstrapRetryTimer = null;
 let bootstrapRetryAttempt = 0;
+let tabHiddenSince = null;
+let lastWakeReconnectAt = 0;
+const IOS_WAKE_RECONNECT_AFTER_MS = 45000;
 const routePending = ref(false);
 let routeStartTimer = null;
 let routeFinishTimer = null;
@@ -131,18 +134,25 @@ const stopAuthenticatedServices = async () => {
 };
 
 const bootstrapAuthenticatedServices = async () => {
-	await store.dispatch('syncIdentity');
-	await Promise.all([
-		store.dispatch('messenger/connectMessenger'),
-		store.dispatch('notifications/sync').catch(() => null),
-        store.dispatch('notifications/refreshSoundPreference').catch(() => null),
-	]);
-	store.dispatch('notifications/startPolling');
-	const room = store.getters['chat/getCurrentRoom'];
-	if (room?.uid) await store.dispatch('chat/connectSocket', room.uid);
-	bootstrapError.value = false;
-	bootstrapRetryAttempt = 0;
-	clearBootstrapRetry();
+    // main.js already refreshed the session and verified /me before mounting.
+    // Login also verified the identity. Re-query only after a failed verification,
+    // instead of repeating a slow profile request on every successful startup.
+    if (!store.getters.isIdentityValidated) {
+        await store.dispatch('syncIdentity');
+    }
+    store.dispatch('notifications/startPolling');
+    const room = store.getters['chat/getCurrentRoom'];
+    // Messenger ticket stalls must never delay the Space WebSocket.
+    // Independent channels start in parallel; each has its own retry policy.
+    await Promise.allSettled([
+        store.dispatch('messenger/connectMessenger'),
+        room?.uid ? store.dispatch('chat/connectSocket', room.uid) : Promise.resolve(),
+        store.dispatch('notifications/sync'),
+        store.dispatch('notifications/refreshSoundPreference'),
+    ]);
+    bootstrapError.value = false;
+    bootstrapRetryAttempt = 0;
+    clearBootstrapRetry();
 };
 
 const scheduleBootstrapRetry = () => {
@@ -202,6 +212,45 @@ const handleOffline = () => {
 	clearBootstrapRetry();
 };
 
+// iOS Safari freezes background timers and can restore a page from BFCache
+// with WebSocket.readyState still OPEN even after server presence expired.
+// A long suspension needs a fresh one-time ticket, not an old dead socket.
+const reconnectAfterWake = async (force = false) => {
+    if (!store.getters.isAuth || !navigator.onLine) return;
+    if (force && Date.now() - lastWakeReconnectAt > 5000) {
+        lastWakeReconnectAt = Date.now();
+        // Keep message history, but re-establish transport and presence.
+        const roomUid = store.getters['chat/getCurrentRoom']?.uid;
+        await Promise.all([
+            store.dispatch('messenger/disconnectMessenger'),
+            store.dispatch('chat/disconnectSocket'),
+        ]);
+        if (!store.getters.isAuth) return;
+        store.dispatch('messenger/connectMessenger');
+        if (roomUid) store.dispatch('chat/connectSocket', roomUid);
+    } else {
+        store.dispatch('messenger/reconnectIfNeeded');
+        store.dispatch('chat/reconnectIfNeeded');
+    }
+    store.dispatch('notifications/pollInbox').catch(() => {});
+};
+
+const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+        tabHiddenSince = Date.now();
+        return;
+    }
+    if (document.visibilityState === 'visible') {
+        const backgroundDuration = tabHiddenSince ? Date.now() - tabHiddenSince : 0;
+        tabHiddenSince = null;
+        reconnectAfterWake(backgroundDuration >= IOS_WAKE_RECONNECT_AFTER_MS).catch(() => {});
+    }
+};
+
+const handlePageShow = (event) => {
+    if (event.persisted) reconnectAfterWake(true).catch(() => {});
+};
+
 const handleOnline = () => {
 	networkOnline.value = true;
 	bootstrapError.value = false;
@@ -215,10 +264,14 @@ const handleOnline = () => {
 };
 
 onMounted(async () => {
-	await store.dispatch('initializeUser');
+    // main.js has already initialized and (when possible) verified the session.
+    // Re-running initialization here would invalidate that proof and issue
+    // another blocking identity request on every reload.
 	window.addEventListener('pubchat:session-expired', handleSessionExpired);
 	window.addEventListener('offline', handleOffline);
 	window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
     navigator.serviceWorker?.addEventListener('message', handleServiceWorkerNotification);
 	await ensureSessionAndConnect();
 });
@@ -233,6 +286,8 @@ onUnmounted(() => {
 	window.removeEventListener('pubchat:session-expired', handleSessionExpired);
 	window.removeEventListener('offline', handleOffline);
 	window.removeEventListener('online', handleOnline);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('pageshow', handlePageShow);
     navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerNotification);
 });
 

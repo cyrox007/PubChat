@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+let resolveTicket;
+let ticketRequests = 0;
+globalThis.WebSocket = {CONNECTING: 0, OPEN: 1};
+globalThis.__roomApi = { prepareSocket: () => { ticketRequests++; return new Promise(r => { resolveTicket = r; }); } };
+const timers = new Map(); let id = 0;
+globalThis.setTimeout = (fn, ms) => { timers.set(++id, {fn, ms}); return id; };
+globalThis.clearTimeout = key => timers.delete(key);
+globalThis.setInterval = () => ++id;
+globalThis.clearInterval = () => {};
+const source = readFileSync(new URL('../src/stores/chat.js', import.meta.url), 'utf8')
+ .replace(/import UsersService[^;]+;/, 'const UsersService = {};')
+ .replace(/import RealtimeService[^;]+;/, 'const RealtimeService = globalThis.__roomApi;');
+const {default: store} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const state = structuredClone(store.state); const events = [];
+const ctx = {state, commit: (key,value) => store.mutations[key](state,value), dispatch: (key,value) => events.push([key,value])};
+const pending = store.actions.connectSocket(ctx, 'room-test');
+assert.equal(state.connectionState, 'connecting');
+await store.actions.connectSocket(ctx, 'room-test');
+assert.equal(ticketRequests, 1, 'duplicate bootstrap must keep the pending ticket');
+const watchdog = [...timers.values()].find(t => t.ms === 15000); assert.ok(watchdog);
+watchdog.fn(); assert.equal(events.at(-1)[0], 'scheduleReconnect');
+let closed = false; resolveTicket({socket: {close(){closed=true;}}}); await pending;
+assert.ok(closed, 'late ticket must close stale socket'); assert.equal(state.socket, null);
+let socketCloses = 0;
+let socket = {readyState: WebSocket.OPEN, close(){socketCloses++;}, send(){}};
+globalThis.__roomApi.prepareSocket = async () => ({socket,ticket:'test'});
+await store.actions.connectSocket(ctx, 'room-test');
+socket.onopen(); assert.equal(state.connectionState, 'authenticating');
+socket.onmessage({data: JSON.stringify({type:'realtime_ready'})});
+assert.equal(state.connectionState,'connected');
+await store.actions.connectSocket(ctx, 'room-test');
+assert.equal(state.socket,socket);
+assert.equal(socketCloses,0,'duplicate bootstrap must keep the healthy room socket');
+assert.ok(![...timers.values()].some(t=>t.ms===15000 && t!==watchdog), 'ready must clear watchdog');
+// When the server rolls a worker, 1000 is not an intentional local logout.
+socket.onclose({code: 1000, reason: 'worker reload'});
+assert.equal(events.at(-1)[0], 'scheduleReconnect', 'Unexpected remote 1000 must reconnect');
+store.actions.disconnectSocket(ctx);
+console.log('Room timeout, stale attempt and ready lifecycle: OK');

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const storage = new Map();
+globalThis.localStorage = { getItem: key=>storage.get(key) ?? null, setItem:(key,value)=>storage.set(key,value), removeItem:key=>storage.delete(key) };
+const events=[];globalThis.window={dispatchEvent:event=>events.push(event.type)};
+let responseError, refreshFailure, refreshCalls=0;
+const api=()=>{}; api.interceptors={request:{use(){}},response:{use(ok,fail){responseError=fail;}}};
+globalThis.__axios={create:options=>{assert.equal(options.timeout,15000);return api;},get:async(url,options)=>{assert.equal(options.timeout,5000);return {data:{csrf_token:'test'}};},post:async(url,data,options)=>{refreshCalls++;assert.equal(options.timeout,10000);throw refreshFailure;}};
+globalThis.__store={commit(){},dispatch(){}};
+let source=readFileSync(new URL('../src/API/index.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replace('import.meta.env.VITE_API_BASE_URL','undefined');
+source='const axios=globalThis.__axios;const store=globalThis.__store;const getAccessToken=()=>null;const setAccessToken=()=>{};const clearAccessToken=()=>{};const AUTH_DEVICE_HEADER="X-Test-Device";const getAuthDeviceId=()=>"test";\n'+source;
+await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+for(const status of [undefined,500,401]){
+ storage.set('auth','true');events.length=0;
+ refreshFailure=status?{response:{status}}:new Error('network timeout');
+ await responseError({config:{url:'/identity/v2/me'},response:{status:401}}).catch(()=>{});
+ assert.equal(storage.has('auth'),status!==401,'only definitive 401 revokes local session');
+ assert.equal(events.includes('pubchat:session-expired'),status===401);
+}
+const before=refreshCalls;
+await responseError({config:{url:'/identity/v2/login'},response:{status:401}}).catch(()=>{});
+assert.equal(refreshCalls,before,'bad login must not start refresh or revoke another session');
+let resolvePush;
+globalThis.__dropPush=()=>new Promise(resolve=>{resolvePush=resolve;});
+source=readFileSync(new URL('../src/stores/user.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?/gm,'');
+source='const CSRFService={};const UsersServices={};const AuthService={};const clearAccessToken=()=>{};const setAccessToken=()=>{};const detachWebPushDeviceBeforeLogout=async()=>{};const dropLocalWebPushSubscription=globalThis.__dropPush;\n'+source;
+const {default:user}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const state={auth:true,user:{uid:'test'},identity:{account:{uid:'test'}}};
+const pending=user.actions.clearUser({commit:(key,value)=>user.mutations[key](state,value)});
+assert.equal(state.auth,false);assert.equal(state.user,null);assert.equal(state.identity,null);
+resolvePush();await pending;
+console.log('Network/5xx preserve session; 401 expires; login bypass and synchronous identity cleanup: OK');
