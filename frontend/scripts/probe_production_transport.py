@@ -7,8 +7,10 @@ A 101 confirms only the proxy upgrade path, NOT ticket validation or Safari.
 """
 import base64
 import http.client
+import json
 import os
 import secrets
+import struct
 import socket
 import ssl
 import time
@@ -83,8 +85,42 @@ def websocket_check(host, path):
             print("WSS result=not_upgraded; proxy/redirect/route may be responsible",
                   flush=True)
         else:
-            print("WSS result=upgrade_ok; ticket/auth/ready/heartbeat NOT tested",
+            print("WSS result=upgrade_ok; checking first auth frame with deliberately INVALID ticket",
                   flush=True)
+            # A deliberately invalid ticket confirms whether the backend
+            # receives websocket frames and closes safely with 4401.
+            # Never use an existing ticket, user token, or production account.
+            auth = json.dumps({
+                "type": "auth",
+                "ticket": secrets.token_urlsafe(32),
+            }).encode("utf-8")
+            mask = secrets.token_bytes(4)
+            if len(auth) >= 126:
+                raise ValueError("unexpected length of diagnostic auth frame")
+            masked = bytes(byte ^ mask[i % 4] for i, byte in enumerate(auth))
+            connection.sendall(bytes([0x81, 0x80 | len(auth)]) + mask + masked)
+            first = connection.recv(2)
+            if len(first) != 2:
+                print("WSS auth=closed_without_close_frame", flush=True)
+            else:
+                opcode = first[0] & 0x0F
+                length = first[1] & 0x7F
+                if length == 126:
+                    length = struct.unpack("!H", connection.recv(2))[0]
+                elif length == 127:
+                    length = struct.unpack("!Q", connection.recv(8))[0]
+                frame = b""
+                while len(frame) < length:
+                    piece = connection.recv(length - len(frame))
+                    if not piece:
+                        break
+                    frame += piece
+                close_code = struct.unpack("!H", frame[:2])[0] if opcode == 8 and len(frame) >= 2 else None
+                print(f"WSS auth_response_opcode={opcode} close_code={close_code}"
+                      f" auth_roundtrip_ms={(time.monotonic()-start)*1000:.0f}", flush=True)
+                if close_code == 4401:
+                    print("WSS server_application_auth_reached=yes; a real ticket is still required",
+                          flush=True)
     except Exception as exc:
         elapsed = (time.monotonic() - start) * 1000
         print(f"WSS host={host} path={path} error={type(exc).__name__}"
