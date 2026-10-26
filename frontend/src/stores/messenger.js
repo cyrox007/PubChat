@@ -9,7 +9,13 @@ import {
 
 let messengerReconnectTimer = null;
 let messengerHeartbeatTimer = null;
+let messengerConnectTimer = null;
 let messengerConnectionGeneration = 0;
+
+const clearConnectTimer = () => {
+    if (messengerConnectTimer) clearTimeout(messengerConnectTimer);
+    messengerConnectTimer = null;
+};
 
 const clearReconnectTimer = () => {
 	if (messengerReconnectTimer) clearTimeout(messengerReconnectTimer);
@@ -165,10 +171,14 @@ export default {
 		},
 	},
 	actions: {
-		async connectMessenger({ commit, state, dispatch }) {
-			clearReconnectTimer();
-			clearHeartbeatTimer();
-			messengerConnectionGeneration += 1;
+        async connectMessenger({ commit, state, dispatch }) {
+            // A foreground event and app shell may race; keep pending tickets.
+            if (messengerConnectTimer
+                || [WebSocket.CONNECTING, WebSocket.OPEN].includes(state.socket?.readyState)) return;
+            clearReconnectTimer();
+            clearHeartbeatTimer();
+            clearConnectTimer();
+            messengerConnectionGeneration += 1;
 			const generation = messengerConnectionGeneration;
 
 			if (state.socket) {
@@ -177,10 +187,22 @@ export default {
 			}
 
 			commit('SET_CONNECTION_STATUS', false);
-			commit('SET_CONNECTION_STATE', state.reconnectAttempt ? 'reconnecting' : 'connecting');
+            commit('SET_CONNECTION_STATE', state.reconnectAttempt ? 'reconnecting' : 'connecting');
 
-			try {
-				const prepared = await RealtimeService.prepareSocket('messenger');
+            // Safari can stall a TLS/upgrade handshake without firing onerror.
+            messengerConnectTimer = setTimeout(() => {
+                if (generation !== messengerConnectionGeneration) return;
+                messengerConnectionGeneration += 1;
+                messengerConnectTimer = null;
+                const stalled = state.socket;
+                commit('SET_SOCKET', null);
+                commit('SET_CONNECTION_STATUS', false);
+                try { stalled?.close(4000, 'Connection timeout'); } catch { /* noop */ }
+                dispatch('scheduleReconnect');
+            }, 15000);
+
+            try {
+                const prepared = await RealtimeService.prepareSocket('messenger');
 				if (generation !== messengerConnectionGeneration) {
 					prepared.socket.close(1000, 'Stale connection');
 					return;
@@ -208,8 +230,9 @@ export default {
 							commit('SET_CONNECTION_STATE', 'connected');
 							commit('SET_RECONNECT_ATTEMPT', 0);
 							commit('SET_REALTIME_NOTICE', null);
-							clearHeartbeatTimer();
-							const heartbeatMs = Math.max(10, data.heartbeat_seconds || 25) * 1000;
+                            clearHeartbeatTimer();
+                            clearConnectTimer();
+                            const heartbeatMs = Math.max(10, data.heartbeat_seconds || 25) * 1000;
 							messengerHeartbeatTimer = setInterval(() => {
 								if (socket.readyState === WebSocket.OPEN) {
 									socket.send(JSON.stringify({ type: 'heartbeat', action: 'heartbeat' }));
@@ -233,14 +256,17 @@ export default {
 
 				socket.onclose = (event) => {
 					if (generation !== messengerConnectionGeneration) return;
-					clearHeartbeatTimer();
-					commit('SET_SOCKET', null);
-					commit('SET_CONNECTION_STATUS', false);
-					if (event.code === 1000) {
-						commit('SET_CONNECTION_STATE', 'idle');
-						return;
-					}
-					dispatch('scheduleReconnect');
+                    clearHeartbeatTimer();
+                    clearConnectTimer();
+                    commit('SET_SOCKET', null);
+                    commit('SET_CONNECTION_STATUS', false);
+                    // Client-initiated disconnect invalidates this generation.
+                    // Remote normal 1000 closure is not user intent; recover it.
+                    if (event.code === 4003 || event.code === 1008) {
+                        commit('SET_CONNECTION_STATE', 'restricted');
+                        return;
+                    }
+                    dispatch('scheduleReconnect');
 				};
 
 				socket.onerror = () => {
@@ -248,11 +274,14 @@ export default {
 				};
 			} catch (error) {
 				console.error('Не удалось подготовить messenger realtime:', error);
-				if (generation === messengerConnectionGeneration) dispatch('scheduleReconnect');
-			}
-		},
+                if (generation === messengerConnectionGeneration) {
+                    clearConnectTimer();
+                    dispatch('scheduleReconnect');
+                }
+            }
+        },
 
-		scheduleReconnect({ commit, state, dispatch }) {
+        scheduleReconnect({ commit, state, dispatch }) {
 			clearReconnectTimer();
 			const attempt = state.reconnectAttempt + 1;
 			commit('SET_RECONNECT_ATTEMPT', attempt);
@@ -264,15 +293,19 @@ export default {
 			);
 		},
 
-		reconnectIfNeeded({ state, dispatch }) {
-			if (!state.isConnected) dispatch('connectMessenger');
-		},
+        reconnectIfNeeded({ state, dispatch }) {
+            if (!state.isConnected && !messengerConnectTimer
+                && state.socket?.readyState !== WebSocket.CONNECTING) {
+                dispatch('connectMessenger');
+            }
+        },
 
 		disconnectMessenger({ commit, state }) {
-			messengerConnectionGeneration += 1;
-			clearReconnectTimer();
-			clearHeartbeatTimer();
-			if (state.socket) {
+            messengerConnectionGeneration += 1;
+            clearReconnectTimer();
+            clearHeartbeatTimer();
+            clearConnectTimer();
+            if (state.socket) {
 				try { state.socket.close(1000, 'Client disconnect'); } catch { /* noop */ }
 			}
 			commit('SET_SOCKET', null);
