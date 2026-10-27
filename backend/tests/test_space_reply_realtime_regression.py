@@ -145,7 +145,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                  patch.object(room_ws.manager, "broadcast_to_room", new_callable=AsyncMock,
                               side_effect=RuntimeError("redis bus offline")), \
                  patch.object(room_ws.manager, "send_to_specific_user", new_callable=AsyncMock) as fallback, \
-                 patch.object(room_ws.Database, "sessionmaker", return_value=context), \
+                 patch.object(room_ws.Database, "sessionmaker", return_value=lambda: context), \
                  patch.object(room_ws, "_notify_online_members", new_callable=AsyncMock,
                               side_effect=RuntimeError("notification worker offline")):
                 await room_ws.handle_text_message(
@@ -175,7 +175,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                  patch.object(room_ws.manager, "broadcast_to_room", new_callable=AsyncMock,
                               side_effect=never_returns), \
                  patch.object(room_ws.manager, "send_to_specific_user", new_callable=AsyncMock) as fallback, \
-                 patch.object(room_ws.Database, "sessionmaker", return_value=context), \
+                 patch.object(room_ws.Database, "sessionmaker", return_value=lambda: context), \
                  patch.object(room_ws, "_notify_online_members", new_callable=AsyncMock,
                               side_effect=never_returns):
                 await asyncio.wait_for(room_ws._deliver_saved_room_message(
