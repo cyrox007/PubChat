@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Boolean, Index, and_, desc, asc, func, or_
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Boolean, Index, UniqueConstraint, and_, desc, asc, func, or_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, joinedload
@@ -19,6 +19,7 @@ class Message(Database.Base):
 
     uid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     content_type = Column(String(50), nullable=False)
+    front_id = Column(String(128), nullable=True)
     text = Column(String(1000))
     media_metadata = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -37,6 +38,7 @@ class Message(Database.Base):
 
     __table_args__ = (
         Index("ix_messages_discovery_recent", "created_at", "room_uid", "author_uid"),
+        UniqueConstraint("room_uid", "author_uid", "front_id", name="uq_room_message_client_id"),
     )
 
     def __repr__(self):
@@ -56,6 +58,7 @@ class Message(Database.Base):
         formatted = {
             "type": "message",
             "uid": str(msg.uid),
+            "frontId": getattr(msg, "front_id", None),
             "content": msg.text,
             "content_type": msg.content_type,
             "media_metadata": msg.media_metadata,
@@ -157,6 +160,7 @@ class PrivateMessage(Database.Base):
 
     id = Column(Integer, primary_key=True, index=True)
     uid = Column(UUID(as_uuid=True), default=uuid4, unique=True, index=True)
+    front_id = Column(String(128), nullable=True)
     content_type = Column(String(50), nullable=False)
     text = Column(String(1000))
     media_metadata = Column(JSON)
@@ -170,6 +174,10 @@ class PrivateMessage(Database.Base):
     # Связь с получателем
     receiver_uid = Column(UUID(as_uuid=True), ForeignKey("users.uid"))
     receiver = relationship("User", foreign_keys=[receiver_uid], back_populates="received_private_messages")
+
+    __table_args__ = (
+        UniqueConstraint("sender_uid", "receiver_uid", "front_id", name="uq_private_message_client_id"),
+    )
 
     def __repr__(self):
         return f"<PrivateMessage(uid={self.uid}, sender={self.sender_uid}, receiver={self.receiver_uid})>"
@@ -186,6 +194,7 @@ class PrivateMessage(Database.Base):
         formatted = {
             "type": "private_message",
             "uid": str(msg.uid),
+            "frontId": getattr(msg, "front_id", None),
             "content": msg.text,
             "content_type": msg.content_type,
             "media_metadata": msg.media_metadata,
