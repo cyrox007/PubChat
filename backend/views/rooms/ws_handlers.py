@@ -250,7 +250,7 @@ async def _deliver_saved_room_message(
         # Do not reuse the socket's long-lived AsyncSession for optional
         # notifications. A slow notification query must not pin/poison the
         # connection used to process the next incoming frame.
-        async with Database.sessionmaker() as notification_db:
+        async with Database.sessionmaker()() as notification_db:
             await asyncio.wait_for(
                 _notify_online_members(
                     notification_db, room_uid, sender_uid, formatted_message,
