@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import * as messageIdentity from '../src/utils/messageIdentity.js';
 
 // Exercise the real Vuex action logic with controlled WebSocket and timers.
 const scheduled = new Map();
@@ -30,8 +31,9 @@ globalThis.__messengerApi = {
 };
 const source = readFileSync(new URL('../src/stores/messenger.js', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm, '');
+globalThis.__messageIdentity = messageIdentity;
 const { default: module } = await import('data:text/javascript;base64,'
-  + Buffer.from('const RealtimeService=globalThis.__messengerApi;\n' + source).toString('base64'));
+  + Buffer.from('const RealtimeService=globalThis.__messengerApi;\nconst { upsertMessage, sameMessage }=globalThis.__messageIdentity;\n' + source).toString('base64'));
 const state = structuredClone(module.state);
 const events = [];
 const ctx = {
