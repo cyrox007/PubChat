@@ -1,5 +1,6 @@
 import UsersService from '@/API/UsersService';
 import RealtimeService from '@/API/RealtimeService';
+import { upsertMessage, sameMessage } from '@/utils/messageIdentity.js';
 
 let roomReconnectTimer = null;
 let roomHeartbeatTimer = null;
@@ -21,7 +22,7 @@ const clearHeartbeatTimer = () => {
 	roomHeartbeatTimer = null;
 };
 
-const messageKey = (message) => message?.uid || message?.frontId || message?.tempId || null;
+const messageKey = (message) => message?.frontId || message?.uid || message?.tempId || null;
 
 export default {
 	namespaced: true,
@@ -87,23 +88,22 @@ export default {
 			state.realtimeNotice = notice;
 		},
 		addMessage(state, message) {
-			const key = messageKey(message);
-			if (key) {
-				const index = state.messages.findIndex((item) => messageKey(item) === key);
-				if (index >= 0) {
-					state.messages[index] = { ...state.messages[index], ...message };
-					return;
-				}
-			}
-			state.messages.push(message);
-		},
+            state.messages = upsertMessage(state.messages, message);
+        },
+        SET_MESSAGE_STATUS(state, { frontId, status }) {
+            state.messages = state.messages.map((m) => m.frontId === frontId && !m.uid
+                ? { ...m, status }
+                : m);
+        },
+        MARK_UNCONFIRMED(state) {
+            state.messages = state.messages.map((m) => m.status === 'sending' && !m.uid
+                ? { ...m, status: 'uncertain' }
+                : m);
+        },
 		mergeMessages(state, messages) {
-			messages.forEach((message) => {
-				const key = messageKey(message);
-				const index = key ? state.messages.findIndex((item) => messageKey(item) === key) : -1;
-				if (index >= 0) state.messages[index] = { ...state.messages[index], ...message };
-				else state.messages.push(message);
-			});
+            for (const message of messages) {
+                state.messages = upsertMessage(state.messages, message);
+            }
 			state.messages.sort((a, b) => {
 				const left = new Date(a.created_at || a.timestamp || 0).getTime();
 				const right = new Date(b.created_at || b.timestamp || 0).getTime();
@@ -247,6 +247,7 @@ export default {
 					clearConnectTimer();
 					commit('setSocket', null);
 					commit('setConnectionStatus', false);
+                    commit('MARK_UNCONFIRMED');
 
                     // Local disconnect/replacement already invalidated the
                     // connection generation. Remote 1000 still needs reconnect.
@@ -303,7 +304,7 @@ export default {
 			const currentUserId = rootGetters.getUser?.uid;
 			switch (data.type) {
 				case 'message': {
-					commit('addMessage', data);
+                    commit('addMessage', { ...data, status: 'sent' });
 					const isViewingSpace = window.location.pathname.includes('/spaces/');
 					if (!isViewingSpace && data.reply_to?.sender?.uid === currentUserId) {
 						commit('ADD_UNREAD_REPLY', {
@@ -344,7 +345,10 @@ export default {
 						state.socket.send(JSON.stringify({ type: 'pong' }));
 					}
 					break;
-				case 'rate_limited':
+				case 'duplicate_pending':
+                    commit('SET_MESSAGE_STATUS', { frontId: data.frontId, status: 'uncertain' });
+                    break;
+                case 'rate_limited':
 					commit('setRealtimeNotice', {
 						type: 'warning',
 						message: 'Слишком много сообщений подряд. Небольшая пауза поможет разговору оставаться комфортным.',
@@ -369,6 +373,7 @@ export default {
 					commit('removeModerator', data.target_user_uid);
 					break;
 				case 'error':
+                    if (data.frontId) commit('SET_MESSAGE_STATUS', { frontId: data.frontId, status: 'error' });
 					commit('setRealtimeNotice', {
 						type: 'error',
 						message: 'Действие не выполнено. Попробуйте ещё раз.',
@@ -395,12 +400,37 @@ export default {
 			commit('setConnectedUsers', []);
 		},
 
-		sendMessage({ state }, message) {
-			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
-				throw new Error('Пространство сейчас переподключается');
-			}
-			state.socket.send(JSON.stringify(message));
-		},
+		sendMessage({ state, commit }, message) {
+            if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
+                throw new Error('Пространство сейчас переподключается');
+            }
+            // Keep the original payload for a user-triggered retry with the SAME frontId.
+            const outgoing = { ...message };
+            commit('addMessage', {
+                ...message, room_uid: state.intendedRoomId, uid: null,
+                created_at: new Date().toISOString(), status: 'sending', outgoing,
+            });
+            try {
+                state.socket.send(JSON.stringify(outgoing));
+            } catch (error) {
+                commit('SET_MESSAGE_STATUS', { frontId: message.frontId, status: 'uncertain' });
+                throw error;
+            }
+        },
+        retryMessage({ state, commit }, frontId) {
+            const pending = state.messages.find((m) => m.frontId === frontId && !m.uid);
+            if (!pending?.outgoing) return;
+            if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
+                throw new Error('Соединение ещё не восстановлено');
+            }
+            commit('SET_MESSAGE_STATUS', { frontId, status: 'sending' });
+            try {
+                state.socket.send(JSON.stringify(pending.outgoing));
+            } catch (error) {
+                commit('SET_MESSAGE_STATUS', { frontId, status: 'uncertain' });
+                throw error;
+            }
+        },
 
 		clearNotifications({ commit }) {
 			commit('CLEAR_UNREAD_REPLIES');
