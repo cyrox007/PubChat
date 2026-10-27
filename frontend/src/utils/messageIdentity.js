@@ -8,6 +8,9 @@ export const stableMessageKey = (message) => message?.frontId || message?.uid ||
 export function sameMessage(left, right) {
   if (!left || !right) return false;
   if (left.uid && right.uid && left.uid === right.uid) return true;
+  // Distinct committed database rows must never collapse because of a reused ID.
+  if (left.uid && right.uid && left.uid !== right.uid &&
+      !String(left.uid).startsWith('local:') && !String(right.uid).startsWith('local:')) return false;
   if (!left.frontId || !right.frontId || left.frontId !== right.frontId) return false;
   const from = (item) => item.sender_uid || item.sender?.uid || item.author_uid || null;
   const leftFrom = from(left), rightFrom = from(right);
