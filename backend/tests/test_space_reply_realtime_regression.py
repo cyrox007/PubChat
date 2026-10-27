@@ -90,7 +90,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                     "frontId": "reply-1",
                 }, room_uid, user_uid, db, ws)
                 self.assertEqual(save.await_args.args[1] if save.await_args.kwargs else save.await_args.args[1], {
-                    "content": "hello", "content_type": "text",
+                    "content": "hello", "content_type": "text", "frontId": "reply-1",
                     "sender_uid": str(user_uid), "room_uid": str(room_uid),
                     "reply_to_uid": str(parent_uid), "timestamp": save.await_args.args[1]["timestamp"],
                 })
