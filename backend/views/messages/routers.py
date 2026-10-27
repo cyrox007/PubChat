@@ -29,6 +29,7 @@ class EditMessageRequest(BaseModel):
 
 class ReplyMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
+    frontId: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ReactionRequest(BaseModel):
@@ -58,6 +59,7 @@ def _standard_frame(surface: str, message, *, overrides: dict | None = None) -> 
         return {
             "type": "message",
             "uid": str(message.uid),
+            "frontId": getattr(message, "front_id", None),
             "content": overrides.get("content", message.text or ""),
             "content_type": overrides.get("content_type", message.content_type),
             "media_metadata": metadata,
@@ -67,6 +69,7 @@ def _standard_frame(surface: str, message, *, overrides: dict | None = None) -> 
     return {
         "type": "private_message",
         "uid": str(message.uid),
+        "frontId": getattr(message, "front_id", None),
         "content": overrides.get("content", message.text or ""),
         "content_type": overrides.get("content_type", message.content_type),
         "media_metadata": metadata,
@@ -108,28 +111,28 @@ async def _publish_space_reply_after_commit(
     This creates the same durable personal reply notification + pending push
     ledger as the WebSocket path, but never notifies for unrelated room posts.
     """
+    # No concrete HTTP socket to acknowledge; the HTTP 201 response itself
+    # carries the canonical uid. Keep post-commit Redis and notification work
+    # bounded and separate from the request's transaction session.
+    import asyncio
+    from settings import config
+    timeout = max(0.1, config.REALTIME_SEND_TIMEOUT_SECONDS)
     try:
-        await room_manager.broadcast_to_room(room_uid, created)
+        await asyncio.wait_for(room_manager.broadcast_to_room(room_uid, created), timeout=timeout)
     except Exception:
         logger.exception("Room reply saved but realtime broadcast failed")
-    recipient = None
     try:
-        recipient = await queue_space_reply(
-            db, room_uid=room_uid, sender_legacy_uid=sender_uid,
-            formatted_message=created,
-        )
+        async with Database.sessionmaker()() as notification_db:
+            recipient = await asyncio.wait_for(queue_space_reply(
+                notification_db, room_uid=room_uid, sender_legacy_uid=sender_uid,
+                formatted_message=created,
+            ), timeout=timeout)
+            await asyncio.wait_for(notify_online_space_members(
+                notification_db, room_uid=room_uid, sender_uid=sender_uid,
+                formatted_message=created, exclude_uids={recipient} if recipient else None,
+            ), timeout=timeout)
     except Exception:
-        logger.exception("Room reply saved but personal notification failed")
-        await db.rollback()
-    try:
-        await notify_online_space_members(
-            db, room_uid=room_uid, sender_uid=sender_uid,
-            formatted_message=created,
-            exclude_uids={recipient} if recipient else None,
-        )
-    except Exception:
-        logger.exception("Room reply saved but secondary online alert failed")
-        await db.rollback()
+        logger.exception("Room reply saved but secondary notifications unavailable")
 
 
 def install(app: FastAPI):
@@ -185,10 +188,12 @@ def install(app: FastAPI):
                 # Required for durable Space reply notification claim and
                 # same-room parent verification, not only UI quote metadata.
                 "reply_to_uid": str(source.uid),
+                "frontId": payload.frontId,
             })
-            await _publish_space_reply_after_commit(
-                db, room_uid=room_uid, sender_uid=user_uid, created=created,
-            )
+            if not created.pop("_replayed", False):
+                await _publish_space_reply_after_commit(
+                    db, room_uid=room_uid, sender_uid=user_uid, created=created,
+                )
         elif surface == "messenger":
             await assert_allowed(db, user_uid, "messenger.send")
             target_uid = source.receiver_uid if source.sender_uid == user_uid else source.sender_uid
@@ -196,10 +201,14 @@ def install(app: FastAPI):
                 raise HTTPException(status_code=403, detail={"error_type": "dm_not_allowed"})
             await assert_plaintext_allowed(db, user_uid, target_uid)
             await inspect_plaintext_write(db, clean, surface="messenger_plaintext", operation="reply")
-            created = await PrivateMessage.create_private_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(target_uid)})
-            await private_manager.send_to_user(user_uid, created)
-            if target_uid != user_uid:
-                await private_manager.send_to_user(target_uid, created)
+            created = await PrivateMessage.create_private_message(db, {"content": clean, "content_type": "text", "media_metadata": metadata, "sender_uid": str(user_uid), "receiver_uid": str(target_uid), "frontId": payload.frontId})
+            if not created.pop("_replayed", False):
+                try:
+                    await private_manager.send_to_user(user_uid, created)
+                    if target_uid != user_uid:
+                        await private_manager.send_to_user(target_uid, created)
+                except Exception:
+                    logger.exception("DM reply saved but realtime delivery failed")
         else:
             raise HTTPException(status_code=404, detail={"error_type": "message_surface_not_found"})
         return {"status": "ok", "message": created}
