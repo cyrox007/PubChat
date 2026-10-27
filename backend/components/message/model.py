@@ -250,12 +250,38 @@ class PrivateMessage(Database.Base):
         return formatted
 
     @staticmethod
+    async def find_by_front_id(db_session: AsyncSession, sender_uid, receiver_uid, front_id: str):
+        if not front_id:
+            return None
+        result = await db_session.execute(
+            select(PrivateMessage)
+            .options(joinedload(PrivateMessage.sender))
+            .where(
+                PrivateMessage.sender_uid == sender_uid,
+                PrivateMessage.receiver_uid == receiver_uid,
+                PrivateMessage.front_id == front_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        return PrivateMessage.format_message(record) if record else None
+
+    @staticmethod
     async def create_private_message(db_session: AsyncSession, message_data: dict):
         """
         Создает новое приватное сообщение асинхронно.
         """
+        front_id = message_data.get("frontId")
+        if front_id is not None and (not isinstance(front_id, str) or not 1 <= len(front_id) <= 128):
+            raise ValueError("Invalid frontId")
+        if front_id:
+            existing = await PrivateMessage.find_by_front_id(
+                db_session, message_data.get("sender_uid"), message_data.get("receiver_uid"), front_id,
+            )
+            if existing:
+                return {**existing, "_replayed": True}
         try:
             new_message = PrivateMessage(
+                front_id=front_id,
                 content_type=message_data.get("content_type", "text"),
                 text=message_data.get("content"),
                 media_metadata=message_data.get("media_metadata"),
@@ -264,7 +290,21 @@ class PrivateMessage(Database.Base):
                 created_at=datetime.utcnow()
             )
 
-            db_session.add(new_message)
+            if front_id:
+                try:
+                    async with db_session.begin_nested():
+                        db_session.add(new_message)
+                        await db_session.flush()
+                except IntegrityError:
+                    existing = await PrivateMessage.find_by_front_id(
+                        db_session, message_data.get("sender_uid"), message_data.get("receiver_uid"), front_id,
+                    )
+                    if existing:
+                        return {**existing, "_replayed": True}
+                    raise
+            else:
+                db_session.add(new_message)
+                await db_session.flush()
             await db_session.commit()
 
             # Явно загружаем связанные объекты
