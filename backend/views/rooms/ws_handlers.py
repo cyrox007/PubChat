@@ -454,8 +454,7 @@ async def handle_file_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
-        await manager.broadcast_to_room(room_uid, formatted_message)
-        await _notify_online_members(db_session, room_uid, user_uid, formatted_message)
+        await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted:
             for item in saved_files:
@@ -553,8 +552,7 @@ async def handle_audio_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
-        await manager.broadcast_to_room(room_uid, formatted_message)
-        await _notify_online_members(db_session, room_uid, user_uid, formatted_message)
+        await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted and saved_audio:
             remove_saved_file(saved_audio.get("url"))
