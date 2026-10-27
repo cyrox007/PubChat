@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { upsertMessage, sameMessage, stableMessageKey } from '../src/utils/messageIdentity.js';
+
+const pending = { frontId: 'draft-a', uid: null, sender: {uid:'a'}, room_uid:'room1', content:'Hi', status:'sending' };
+const saved = { frontId: 'draft-a', uid: 'server-1', sender:{uid:'a'}, room_uid:'room1', content:'Hi', type:'message' };
+const rows = upsertMessage(upsertMessage([], pending), saved);
+assert.equal(rows.length, 1, 'optimistic row must reconcile, not duplicate');
+assert.equal(rows[0].uid, 'server-1');
+assert.equal(rows[0].status, 'sent');
+assert.equal(stableMessageKey(pending), stableMessageKey(rows[0]), 'Vue row key must not change after ACK');
+assert.equal(upsertMessage(rows, saved).length, 1, 'replayed ACK must be harmless');
+assert.equal(upsertMessage(rows, {uid:'server-1', status:'edited'}).length, 1, 'canonical edits must merge');
+assert.equal(sameMessage(pending, {...saved, sender:{uid:'another'}}), false, 'do not merge across authors');
+assert.equal(sameMessage(pending, {...saved, room_uid:'room2'}), false, 'do not merge across rooms');
+const room = readFileSync(new URL('../src/stores/chat.js', import.meta.url), 'utf8');
+const dm = readFileSync(new URL('../src/stores/messenger.js', import.meta.url), 'utf8');
+const view = readFileSync(new URL('../src/views/MainView.vue', import.meta.url), 'utf8');
+assert.match(room, /upsertMessage\(/);
+assert.match(dm, /upsertMessage\(/);
+assert.match(view, /:key="msg\.frontId \|\| msg\.uid/);
+console.log('Message frontId correlation and stable row contract: OK');
