@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketState
 
 from components.decorators.db import get_realtime_session, release_realtime_session
+from database import Database
 from components.message.model import Message
 from components.moderation.policy import assert_allowed
 from components.moderation.lexicon_service import inspect_plaintext_write
@@ -214,6 +216,51 @@ async def _notify_online_members(
         await db_session.rollback()
 
 
+# A successful commit is the authoritative delivery boundary. Redis publishing
+# and personal notification fan-out are secondary transports: a slow or failed
+# transport must never make the socket reject an already persisted message,
+# release its idempotency claim, or block later frames indefinitely.
+POST_COMMIT_DELIVERY_TIMEOUT_SECONDS = max(0.1, config.REALTIME_SEND_TIMEOUT_SECONDS)
+
+
+async def _deliver_saved_room_message(
+    room_uid: UUID,
+    sender_uid: UUID,
+    formatted_message: dict,
+    websocket: WebSocket,
+) -> None:
+    try:
+        await asyncio.wait_for(
+            manager.broadcast_to_room(room_uid, formatted_message),
+            timeout=POST_COMMIT_DELIVERY_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.exception("Space message saved but room broadcast unavailable: room=%s", room_uid)
+        # Local sender ACK remains usable even if the distributed pub/sub bus
+        # failed. The next history reconciliation will recover other clients.
+        try:
+            await asyncio.wait_for(
+                manager.send_to_specific_user(websocket, formatted_message),
+                timeout=POST_COMMIT_DELIVERY_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            logger.exception("Space sender acknowledgement unavailable after commit")
+
+    try:
+        # Do not reuse the socket's long-lived AsyncSession for optional
+        # notifications. A slow notification query must not pin/poison the
+        # connection used to process the next incoming frame.
+        async with Database.sessionmaker()() as notification_db:
+            await asyncio.wait_for(
+                _notify_online_members(
+                    notification_db, room_uid, sender_uid, formatted_message,
+                ),
+                timeout=POST_COMMIT_DELIVERY_TIMEOUT_SECONDS,
+            )
+    except Exception:
+        logger.exception("Space message saved but post-commit notification timed out or failed")
+
+
 async def process_incoming_messages(
     websocket: WebSocket,
     room_uid: UUID,
@@ -346,12 +393,12 @@ async def handle_text_message(
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
-        formatted_message["frontId"] = front_id
-        await manager.broadcast_to_room(room_uid, formatted_message)
-        await _notify_online_members(db_session, room_uid, user_uid, formatted_message)
     except Exception:
+        # Only a failed database write may release the event claim for retry.
         await _release_client_event(room_uid, user_uid, front_id)
         raise
+    formatted_message["frontId"] = front_id
+    await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
 
 
 async def handle_file_message(
@@ -407,8 +454,7 @@ async def handle_file_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
-        await manager.broadcast_to_room(room_uid, formatted_message)
-        await _notify_online_members(db_session, room_uid, user_uid, formatted_message)
+        await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted:
             for item in saved_files:
@@ -506,8 +552,7 @@ async def handle_audio_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
-        await manager.broadcast_to_room(room_uid, formatted_message)
-        await _notify_online_members(db_session, room_uid, user_uid, formatted_message)
+        await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted and saved_audio:
             remove_saved_file(saved_audio.get("url"))

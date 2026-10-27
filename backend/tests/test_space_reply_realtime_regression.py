@@ -84,8 +84,7 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
             with patch.object(room_ws, "_claim_client_event", new_callable=AsyncMock, return_value=True), \
                  patch.object(room_ws, "inspect_plaintext_write", new_callable=AsyncMock), \
                  patch.object(Message, "create_message", new_callable=AsyncMock, return_value=frame) as save, \
-                 patch.object(room_ws.manager, "broadcast_to_room", new_callable=AsyncMock) as broadcast, \
-                 patch.object(room_ws, "_notify_online_members", new_callable=AsyncMock):
+                 patch.object(room_ws, "_deliver_saved_room_message", new_callable=AsyncMock) as deliver:
                 await room_ws.handle_text_message({
                     "content": "hello", "reply_to_uid": str(parent_uid),
                     "frontId": "reply-1",
@@ -95,7 +94,9 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                     "sender_uid": str(user_uid), "room_uid": str(room_uid),
                     "reply_to_uid": str(parent_uid), "timestamp": save.await_args.args[1]["timestamp"],
                 })
-                self.assertEqual(broadcast.await_args.args[1]["frontId"], "reply-1")
+                deliver.assert_awaited_once_with(
+                    room_uid, user_uid, frame, ws,
+                )
                 ws.send_json.assert_not_awaited()
         asyncio.run(scenario())
 
@@ -122,6 +123,65 @@ class SpaceReplyRealtimeTests(unittest.TestCase):
                 self.assertEqual(ws.send_json.await_args.args[0], {
                     "type": "error", "error_type": "space_message_failed", "frontId": "one",
                 })
+        asyncio.run(scenario())
+
+    def test_committed_reply_is_acknowledged_locally_even_if_redis_publish_fails(self):
+        async def scenario():
+            room_uid, author_uid, parent_uid = uuid4(), uuid4(), uuid4()
+            db = MagicMock()
+            db.get = AsyncMock(return_value=SimpleNamespace(
+                uid=parent_uid, room_uid=room_uid, content_type="text",
+            ))
+            websocket = SimpleNamespace(send_json=AsyncMock())
+            frame = {"type": "message", "uid": str(uuid4()),
+                     "reply_to": {"uid": str(parent_uid)}}
+            context = MagicMock()
+            context.__aenter__ = AsyncMock(return_value=MagicMock())
+            context.__aexit__ = AsyncMock(return_value=False)
+            with patch.object(room_ws, "_claim_client_event", new_callable=AsyncMock, return_value=True), \
+                 patch.object(room_ws, "_release_client_event", new_callable=AsyncMock) as release, \
+                 patch.object(room_ws, "inspect_plaintext_write", new_callable=AsyncMock), \
+                 patch.object(Message, "create_message", new_callable=AsyncMock, return_value=frame) as save, \
+                 patch.object(room_ws.manager, "broadcast_to_room", new_callable=AsyncMock,
+                              side_effect=RuntimeError("redis bus offline")), \
+                 patch.object(room_ws.manager, "send_to_specific_user", new_callable=AsyncMock) as fallback, \
+                 patch.object(room_ws.Database, "sessionmaker", return_value=lambda: context), \
+                 patch.object(room_ws, "_notify_online_members", new_callable=AsyncMock,
+                              side_effect=RuntimeError("notification worker offline")):
+                await room_ws.handle_text_message(
+                    {"content": "hello", "reply_to_uid": str(parent_uid), "frontId": "safari-reply"},
+                    room_uid, author_uid, db, websocket,
+                )
+            save.assert_awaited_once()
+            fallback.assert_awaited_once_with(websocket, frame)
+            self.assertEqual(frame["frontId"], "safari-reply")
+            release.assert_not_awaited()
+            websocket.send_json.assert_not_awaited()
+        asyncio.run(scenario())
+
+    def test_stalled_secondary_transports_do_not_hold_room_message_loop(self):
+        async def scenario():
+            room_uid, sender_uid = uuid4(), uuid4()
+            websocket = SimpleNamespace(send_json=AsyncMock())
+            saved = {"type": "message", "uid": str(uuid4()), "frontId": "safari-2"}
+            context = MagicMock()
+            context.__aenter__ = AsyncMock(return_value=MagicMock())
+            context.__aexit__ = AsyncMock(return_value=False)
+
+            async def never_returns(*_args, **_kwargs):
+                await asyncio.Event().wait()
+
+            with patch.object(room_ws, "POST_COMMIT_DELIVERY_TIMEOUT_SECONDS", 0.025), \
+                 patch.object(room_ws.manager, "broadcast_to_room", new_callable=AsyncMock,
+                              side_effect=never_returns), \
+                 patch.object(room_ws.manager, "send_to_specific_user", new_callable=AsyncMock) as fallback, \
+                 patch.object(room_ws.Database, "sessionmaker", return_value=lambda: context), \
+                 patch.object(room_ws, "_notify_online_members", new_callable=AsyncMock,
+                              side_effect=never_returns):
+                await asyncio.wait_for(room_ws._deliver_saved_room_message(
+                    room_uid, sender_uid, saved, websocket,
+                ), timeout=0.25)
+            fallback.assert_awaited_once_with(websocket, saved)
         asyncio.run(scenario())
 
     def test_online_notifications_are_best_effort_after_message_commit(self):
