@@ -85,14 +85,36 @@ class Message(Database.Base):
         return formatted
 
     @staticmethod
+    async def find_by_front_id(db_session: AsyncSession, room_uid, author_uid, front_id: str):
+        if not front_id:
+            return None
+        result = await db_session.execute(
+            select(Message)
+            .options(joinedload(Message.author), joinedload(Message.reply_to).joinedload(Message.author))
+            .where(Message.room_uid == room_uid, Message.author_uid == author_uid, Message.front_id == front_id)
+        )
+        record = result.scalar_one_or_none()
+        return Message.format_message(record) if record else None
+
+    @staticmethod
     async def create_message(db_session: AsyncSession, message_data: dict):
         """
         Создает новое сообщение и сохраняет его в базу данных асинхронно.
         """
+        front_id = message_data.get("frontId")
+        if front_id is not None and (not isinstance(front_id, str) or not 1 <= len(front_id) <= 128):
+            raise ValueError("Invalid frontId")
+        if front_id:
+            existing = await Message.find_by_front_id(
+                db_session, message_data.get("room_uid"), message_data.get("sender_uid"), front_id,
+            )
+            if existing:
+                return {**existing, "_replayed": True}
         try:
             # Создаем новый объект Message
             new_message = Message(
                 content_type=message_data.get("content_type", "text"),
+                front_id=front_id,
                 text=message_data.get("content"),
                 media_metadata=message_data.get("media_metadata"),
                 room_uid=message_data.get("room_uid"),
@@ -101,11 +123,25 @@ class Message(Database.Base):
                 created_at=datetime.utcnow()
             )
 
-            db_session.add(new_message)
+            if front_id:
+                # SAVEPOINT permits recovery from a concurrent unique-key collision.
+                try:
+                    async with db_session.begin_nested():
+                        db_session.add(new_message)
+                        await db_session.flush()
+                except IntegrityError:
+                    existing = await Message.find_by_front_id(
+                        db_session, message_data.get("room_uid"), message_data.get("sender_uid"), front_id,
+                    )
+                    if existing:
+                        return {**existing, "_replayed": True}
+                    raise
+            else:
+                db_session.add(new_message)
+                await db_session.flush()
             # Resolve the message and all quoted author fields BEFORE commit.
             # On an ORM formatting failure, the rollback will remove the write
             # rather than leave an invisible, already committed "ghost" reply.
-            await db_session.flush()
             await db_session.refresh(new_message)
 
             # Load the parent message AND its author in the async query context.
