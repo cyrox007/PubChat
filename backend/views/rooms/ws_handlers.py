@@ -154,6 +154,7 @@ async def _claim_client_event(
     room_uid: UUID,
     user_uid: UUID,
     front_id: str | None,
+    db_session: AsyncSession | None = None,
 ) -> bool:
     claimed = await realtime_service.claim_event(
         user_uid=user_uid,
@@ -163,13 +164,16 @@ async def _claim_client_event(
     if claimed:
         return True
 
-    await websocket.send_json(
-        {
-            "type": "duplicate_ignored",
-            "frontId": front_id,
-            "scope": "space_message",
-        }
-    )
+    # Redis claim may represent a committed message OR an unfinished write.
+    # Resolve committed messages against durable PostgreSQL before telling
+    # a reconnecting client whether its optimistic bubble can be confirmed.
+    existing = await Message.find_by_front_id(db_session, room_uid, user_uid, front_id) if db_session else None
+    if existing:
+        await manager.send_to_specific_user(websocket, existing)
+    else:
+        await websocket.send_json(
+            {"type": "duplicate_pending", "frontId": front_id, "scope": "space_message"}
+        )
     return False
 
 
@@ -377,7 +381,7 @@ async def handle_text_message(
                 "type": "error", "error_type": "reply_target_unavailable", "frontId": front_id,
             })
             return
-    if not await _claim_client_event(websocket, room_uid, user_uid, front_id):
+    if not await _claim_client_event(websocket, room_uid, user_uid, front_id, db_session):
         return
 
     try:
@@ -387,6 +391,7 @@ async def handle_text_message(
             {
                 "content": content,
                 "content_type": "text",
+                "frontId": front_id,
                 "sender_uid": str(user_uid),
                 "room_uid": str(room_uid),
                 "reply_to_uid": str(reply_uid) if reply_uid else None,
@@ -398,6 +403,9 @@ async def handle_text_message(
         await _release_client_event(room_uid, user_uid, front_id)
         raise
     formatted_message["frontId"] = front_id
+    if formatted_message.pop("_replayed", False):
+        await manager.send_to_specific_user(websocket, formatted_message)
+        return
     await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
 
 
@@ -414,7 +422,7 @@ async def handle_file_message(
         return
 
     front_id = data.get("frontId")
-    if not await _claim_client_event(websocket, room_uid, user_uid, front_id):
+    if not await _claim_client_event(websocket, room_uid, user_uid, front_id, db_session):
         return
 
     saved_files: list[dict] = []
@@ -446,6 +454,7 @@ async def handle_file_message(
             {
                 "content": data.get("content", ""),
                 "content_type": data.get("content_type", "file"),
+                "frontId": front_id,
                 "sender_uid": str(user_uid),
                 "room_uid": str(room_uid),
                 "media_metadata": {"files": saved_files},
@@ -454,6 +463,11 @@ async def handle_file_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
+        if formatted_message.pop("_replayed", False):
+            for item in saved_files:
+                remove_saved_file(item.get("url"))
+            await manager.send_to_specific_user(websocket, formatted_message)
+            return
         await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted:
@@ -497,7 +511,7 @@ async def handle_audio_message(
         return
 
     front_id = data.get("frontId")
-    if not await _claim_client_event(websocket, room_uid, user_uid, front_id):
+    if not await _claim_client_event(websocket, room_uid, user_uid, front_id, db_session):
         return
 
     saved_audio = None
@@ -544,6 +558,7 @@ async def handle_audio_message(
             {
                 "content": saved_audio_url,
                 "content_type": "audio",
+                "frontId": front_id,
                 "sender_uid": str(user_uid),
                 "room_uid": str(room_uid),
                 "reply_to_uid": data.get("reply_to_uid"),
@@ -552,6 +567,11 @@ async def handle_audio_message(
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
+        if formatted_message.pop("_replayed", False):
+            if saved_audio:
+                remove_saved_file(saved_audio.get("url"))
+            await manager.send_to_specific_user(websocket, formatted_message)
+            return
         await _deliver_saved_room_message(room_uid, user_uid, formatted_message, websocket)
     except HTTPException as exc:
         if not message_persisted and saved_audio:
