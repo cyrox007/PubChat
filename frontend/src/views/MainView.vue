@@ -97,9 +97,10 @@
 
 					<Message
 						v-for="msg in messages"
-						:key="msg.uid || msg.frontId || msg.tempId"
+						:key="msg.frontId || msg.uid || msg.tempId"
 						:message="msg"
 						@reply="handleMessageReply"
+                        @retry="handleRetryMessage"
 					/>
 				</section>
 
@@ -308,14 +309,25 @@ const requestMembership = async () => {
 };
 
 const handleMessageReply = (message) => {
+    if (!message.uid) return; // An uncommitted optimistic row cannot be quoted.
 	messageComposer.value?.setReply(message);
 	scrollToBottom();
+};
+const handleRetryMessage = async (frontId) => {
+    try {
+        await store.dispatch('chat/retryMessage', frontId);
+    } catch (error) {
+        store.commit('chat/setRealtimeNotice', {
+            type: 'warning', message: error.message || 'Не удалось повторить отправку.',
+        });
+    }
 };
 
 const handleSendMessage = async (messageData) => {
 	if (isComposerDisabled.value) return;
 	const sanitizedContent = DOMPurify.sanitize(messageData.content || '');
-	store.dispatch('chat/sendMessage', {
+	try {
+        await store.dispatch('chat/sendMessage', {
 		frontId: uuidv4(),
 		content: sanitizedContent,
 		content_type: messageData.content_type,
@@ -327,7 +339,12 @@ const handleSendMessage = async (messageData) => {
 		},
 		reply_to_uid: messageData.reply_to_uid,
 		status: 'sending',
-	});
+	    });
+    } catch (error) {
+        store.commit('chat/setRealtimeNotice', {
+            type: 'warning', message: error.message || 'Отправка недоступна.',
+        });
+    }
 };
 
 const refreshCurrentSpace = async () => {

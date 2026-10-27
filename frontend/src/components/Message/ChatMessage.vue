@@ -14,8 +14,9 @@
     </div>
     <footer v-if="!isDeleted || (isOwn && safeMessage.status)" class="message-footer">
       <MessageActions v-if="safeMessage.uid && !isDeleted" surface="room" :message="safeMessage" :is-own="isOwn" />
-      <button v-if="!isDeleted" class="reply-button" type="button" @click="handleReply" :aria-label="`Ответить на сообщение от ${safeMessage.sender.name}`"><i class="fas fa-reply"></i></button>
-      <span v-if="isOwn && safeMessage.status" class="message-status" :aria-label="safeMessage.status"><i v-if="safeMessage.status === 'sending'" class="fas fa-spinner fa-spin"></i><i v-else-if="safeMessage.status === 'error'" class="fas fa-exclamation-circle error"></i><i v-else class="fas fa-check"></i></span>
+      <button v-if="!isDeleted && safeMessage.uid" class="reply-button" type="button" @click="handleReply" :aria-label="`Ответить на сообщение от ${safeMessage.sender.name}`"><i class="fas fa-reply"></i></button>
+      <span v-if="isOwn && safeMessage.status" class="message-status" :aria-label="statusLabel" :title="statusLabel"><i v-if="safeMessage.status === 'sending'" class="fas fa-spinner fa-spin"></i><i v-else-if="safeMessage.status === 'error' || safeMessage.status === 'uncertain'" class="fas fa-exclamation-circle error"></i><i v-else class="fas fa-check"></i></span>
+      <button v-if="isOwn && !safeMessage.uid && ['uncertain','error'].includes(safeMessage.status)" class="message-retry" type="button" @click="emit('retry', safeMessage.frontId)">Повторить</button>
     </footer>
   </article>
   <div v-else class="loading-message">Загрузка сообщения…</div>
@@ -28,7 +29,7 @@ import MediaMessage from '@/components/Message/MediaMessage.vue';
 import MessageActions from '@/components/Message/MessageActions.vue';
 import { formatUTCDate } from '@/utils/dateFormatter';
 
-const emit = defineEmits(['reply']);
+const emit = defineEmits(['reply', 'retry']);
 const props = defineProps({ message: { type: Object, required: true } });
 const store = useStore();
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
@@ -58,6 +59,12 @@ const formattedTimestamp = computed(() => safeMessage.value ? formatUTCDate(safe
 const isOwn = computed(() => String(safeMessage.value?.sender.uid) === String(currentUser.value?.uid));
 const isDeleted = computed(() => safeMessage.value?.content_type === 'deleted');
 const messageType = computed(() => isOwn.value ? 'sender' : 'other-user');
+const statusLabel = computed(() => ({
+  sending: 'Отправляется',
+  uncertain: 'Подтверждение не получено. Проверьте историю или повторите отправку.',
+  error: 'Сервер отклонил отправку',
+  sent: 'Сохранено на сервере',
+})[safeMessage.value?.status] || '');
 const truncate = (text,length) => String(text||'').length>length ? `${String(text).slice(0,length)}…` : String(text||'');
 const handleReply = () => emit('reply',{uid:safeMessage.value.uid,content:safeMessage.value.content,sender:safeMessage.value.sender});
 </script>
@@ -77,4 +84,9 @@ const handleReply = () => emit('reply',{uid:safeMessage.value.uid,content:safeMe
   .message-footer .message-status{height:40px}
   .reply-preview{margin-right:0}
 }
+</style>
+
+<style scoped>
+.message-retry { border: 1px solid var(--ui-border); background: var(--ui-surface); color: var(--ui-text); border-radius: 8px; padding: .25rem .45rem; font-size: .73rem; cursor: pointer; }
+.message-retry:hover, .message-retry:focus-visible { border-color: var(--ui-primary); }
 </style>

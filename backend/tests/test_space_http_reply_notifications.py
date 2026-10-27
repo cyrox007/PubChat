@@ -58,7 +58,12 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
         async def check():
             db, room_uid, sender_uid, recipient_uid = MagicMock(), uuid4(), uuid4(), uuid4()
             created = {"uid": str(uuid4()), "reply_to": {"uid": str(uuid4())}}
-            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock) as broadcast, \
+            notification_db = MagicMock()
+            context = MagicMock()
+            context.__aenter__ = AsyncMock(return_value=notification_db)
+            context.__aexit__ = AsyncMock(return_value=None)
+            with patch.object(messages_routes.Database, "sessionmaker", return_value=lambda: context), \
+                 patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock) as broadcast, \
                  patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, return_value=recipient_uid) as queue, \
                  patch.object(messages_routes, "notify_online_space_members", new_callable=AsyncMock) as generic:
                 await messages_routes._publish_space_reply_after_commit(
@@ -66,11 +71,11 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
                 )
             broadcast.assert_awaited_once_with(room_uid, created)
             queue.assert_awaited_once_with(
-                db, room_uid=room_uid,
+                notification_db, room_uid=room_uid,
                 sender_legacy_uid=sender_uid, formatted_message=created,
             )
             generic.assert_awaited_once_with(
-                db, room_uid=room_uid, sender_uid=sender_uid,
+                notification_db, room_uid=room_uid, sender_uid=sender_uid,
                 formatted_message=created, exclude_uids={recipient_uid},
             )
         asyncio.run(check())
@@ -79,14 +84,22 @@ class SpaceHttpReplyNotificationTests(unittest.TestCase):
         async def check():
             db = MagicMock()
             db.rollback = AsyncMock()
-            with patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock, side_effect=RuntimeError("realtime outage")), \
+            notification_db = MagicMock()
+            context = MagicMock()
+            context.__aenter__ = AsyncMock(return_value=notification_db)
+            context.__aexit__ = AsyncMock(return_value=None)
+            with patch.object(messages_routes.Database, "sessionmaker", return_value=lambda: context), \
+                 patch.object(messages_routes.room_manager, "broadcast_to_room", new_callable=AsyncMock, side_effect=RuntimeError("realtime outage")), \
                  patch.object(messages_routes, "queue_space_reply", new_callable=AsyncMock, side_effect=RuntimeError("push outage")), \
                  patch.object(messages_routes, "notify_online_space_members", new_callable=AsyncMock):
                 await messages_routes._publish_space_reply_after_commit(
                     db, room_uid=uuid4(), sender_uid=uuid4(),
                     created={"uid": str(uuid4())},
                 )
-            db.rollback.assert_awaited_once()
+            # A notification outage must not roll back or poison the request
+            # session that already committed the canonical reply.
+            db.rollback.assert_not_awaited()
+            context.__aexit__.assert_awaited_once()
         asyncio.run(check())
 
     def test_other_room_message_is_not_eligible_for_personal_reply_push(self):

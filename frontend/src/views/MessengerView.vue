@@ -118,9 +118,10 @@
 
 						<PrivateMessage
 							v-for="message in getConversation(activeDialog)"
-							:key="message.uid || message.frontId"
+							:key="message.frontId || message.uid"
 							:message="message"
-							:ref="setObserverTarget"
+							@retry="handleRetryMessage"
+                            :ref="setObserverTarget"
 						/>
 					</template>
 				</div>
@@ -262,13 +263,25 @@ const setupIntersectionObserver = () => {
 	observerTargets.value.forEach((target) => intersectionObserver.observe(target));
 };
 
+const handleRetryMessage = async (frontId) => {
+    if (!activeDialog.value) return;
+    try {
+        await store.dispatch('messenger/retryPrivateMessage', { peerUid: activeDialog.value, frontId });
+    } catch (error) {
+        store.commit('messenger/SET_REALTIME_NOTICE', {
+            type: 'warning', message: error.message || 'Не удалось повторить отправку.',
+        });
+    }
+};
+
 const handleSendMessage = async (messageData) => {
 	if (!isRealtimeReady.value || !activeDialog.value) return;
 	const rawContent = messageData.content || '';
 	if (!rawContent.trim() && !messageData.media_metadata?.files?.length && !messageData.media_metadata?.voice) return;
 
 	const sanitizedContent = DOMPurify.sanitize(rawContent);
-	await store.dispatch('messenger/sendPrivateMessage', {
+	try {
+        await store.dispatch('messenger/sendPrivateMessage', {
 		frontId: uuidv4(),
 		content: sanitizedContent,
 		content_type: messageData.content_type,
@@ -281,7 +294,12 @@ const handleSendMessage = async (messageData) => {
 		receiver_uid: activeDialog.value,
 		reply_to_uid: messageData.reply_to_uid,
 		status: 'sending',
-	});
+	    });
+    } catch (error) {
+        store.commit('messenger/SET_REALTIME_NOTICE', {
+            type: 'warning', message: error.message || 'Сообщение не отправлено.',
+        });
+    }
 	await nextTick();
 	scrollToBottom();
 };

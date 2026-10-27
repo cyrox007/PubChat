@@ -1,5 +1,5 @@
 <template>
-  <article class="message" :class="[message.isCurrentUser ? 'sent' : 'received', { deleted: isDeleted }]" :data-message-id="message.uid" :data-is-read="message.is_read">
+  <article class="message" :class="[message.isCurrentUser ? 'sent' : 'received', { deleted: isDeleted }]" :data-message-id="message.uid" :data-is-read="message.is_read" :data-is-current-user="message.isCurrentUser">
     <div v-if="replyContext" class="reply-preview">
       <div class="reply-header"><i class="fas fa-reply"></i><span>{{ replyContext.sender?.name || replyContext.sender?.username || 'Пользователь' }}</span><time>{{ replyTime }}</time></div>
       <div class="reply-content">{{ truncate(replyContext.content, 70) }}</div>
@@ -18,7 +18,8 @@
       </span>
       <time class="message-time">{{ formatTime(message.created_at) }}</time>
       <span v-if="message.media_metadata?.edited_at" class="edited-label">изменено</span>
-      <span v-if="message.isCurrentUser" class="read-state" :title="message.is_read ? 'Прочитано' : 'Доставлено'"><i :class="message.is_read ? 'fas fa-check-double' : 'fas fa-check'"></i></span>
+      <span v-if="message.isCurrentUser" class="read-state" :title="deliveryLabel"><i :class="message.status === 'sending' ? 'fas fa-spinner fa-spin' : ['uncertain','error'].includes(message.status) ? 'fas fa-exclamation-circle' : message.is_read ? 'fas fa-check-double' : 'fas fa-check'"></i></span>
+      <button v-if="message.isCurrentUser && !message.uid && ['uncertain','error'].includes(message.status)" type="button" class="message-retry" @click="emit('retry', message.frontId)">Повторить</button>
       <button v-if="!message.isCurrentUser && message.uid && !reportSent && !isDeleted" class="report-toggle" type="button" :aria-expanded="reportOpen" @click="reportOpen = !reportOpen"><i class="far fa-flag"></i><span>Пожаловаться</span></button>
       <span v-if="reportSent" class="report-sent"><i class="fas fa-check"></i> Жалоба отправлена</span>
     </footer>
@@ -33,6 +34,7 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+const emit = defineEmits(['retry']);
 import MediaMessage from '@/components/Message/MediaMessage.vue';
 import MessageActions from '@/components/Message/MessageActions.vue';
 import ModerationService from '@/API/ModerationService';
@@ -42,6 +44,7 @@ const props=defineProps({message:{type:Object,required:true}});
 const mediaTypes=new Set(['image','video','audio','voice','file']);
 const textTypes=new Set(['text','e2ee']);
 const isDeleted=computed(()=>props.message.content_type==='deleted');
+const deliveryLabel=computed(()=>props.message.status==='sending'?'Отправляется':props.message.status==='uncertain'?'Подтверждение не получено':props.message.status==='error'?'Отправка отклонена':props.message.is_read?'Прочитано':props.message.uid?'Сохранено на сервере':'Ожидает подтверждения');
 const replyContext=computed(()=>props.message.reply_to||props.message.media_metadata?.reply_to||null);
 const transportTitle=computed(()=>props.message.encrypted
   ? (props.message.e2ee_locked ? 'E2EE: ключ этого сообщения недоступен на текущем устройстве' : 'Это сообщение отправлено со сквозным шифрованием')
@@ -58,4 +61,7 @@ const replyTime=computed(()=>replyContext.value?.created_at?formatUTCDate(replyC
 .report-toggle{display:inline-flex;align-items:center;gap:.25rem;padding:.1rem .25rem;border:0;background:transparent;color:var(--ui-text-subtle);font-size:.65rem;cursor:pointer}.report-toggle:hover{color:var(--ui-danger)}.report-sent{color:var(--ui-success);font-size:.65rem}.reply-preview{margin-bottom:.28rem;padding:.32rem .48rem;border-left:3px solid var(--ui-primary);border-radius:0 8px 8px 0;background:var(--ui-surface-muted)}.reply-header{display:flex;align-items:center;gap:.3rem;color:var(--ui-primary);font-size:.68rem;font-weight:700}.reply-header time{margin-left:auto;color:var(--ui-text-subtle);font-weight:400}.reply-content{margin-top:.1rem;color:var(--ui-text-muted);font-size:.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .report-form{display:grid;gap:.55rem;margin-top:.4rem;padding:.65rem;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface);color:var(--ui-text);text-align:left}.report-form label{display:grid;gap:.25rem;font-size:.72rem;font-weight:700}.report-form label span{font-weight:400;color:var(--ui-text-subtle)}.report-form select,.report-form textarea{width:100%;padding:.45rem .5rem;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-surface);color:var(--ui-text);font:inherit}.report-privacy,.report-error{margin:0;font-size:.68rem}.report-privacy{color:var(--ui-text-muted)}.report-error{color:var(--ui-danger)}.report-actions{display:flex;justify-content:flex-end;gap:.4rem}.report-actions>button:not(.ui-button){border:0;background:transparent;color:var(--ui-text-muted);cursor:pointer}
 @media(max-width:680px){.message{max-width:89%;margin:.08rem 0}.message-body{padding:.36rem .5rem;border-radius:14px;box-shadow:none}.message-text{font-size:.89rem;line-height:1.3}.message-meta{min-height:15px}.report-toggle span,.transport-label{display:none}.report-form{min-width:min(17rem,84vw)}}
+</style>
+<style scoped>
+.message-retry { border:1px solid var(--ui-border); border-radius:8px; padding:.25rem .4rem; background:var(--ui-surface); color:var(--ui-text); cursor:pointer; font-size:.72rem; }
 </style>

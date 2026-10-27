@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import * as messageIdentity from '../src/utils/messageIdentity.js';
 let resolveTicket;
 let ticketRequests = 0;
 globalThis.WebSocket = {CONNECTING: 0, OPEN: 1};
@@ -11,7 +12,9 @@ globalThis.setInterval = () => ++id;
 globalThis.clearInterval = () => {};
 const source = readFileSync(new URL('../src/stores/chat.js', import.meta.url), 'utf8')
  .replace(/import UsersService[^;]+;/, 'const UsersService = {};')
- .replace(/import RealtimeService[^;]+;/, 'const RealtimeService = globalThis.__roomApi;');
+ .replace(/import RealtimeService[^;]+;/, 'const RealtimeService = globalThis.__roomApi;')
+ .replace(/import \{ upsertMessage[^;]+;/, 'const { upsertMessage, sameMessage } = globalThis.__messageIdentity;');
+globalThis.__messageIdentity = messageIdentity;
 const {default: store} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const state = structuredClone(store.state); const events = [];
 const ctx = {state, commit: (key,value) => store.mutations[key](state,value), dispatch: (key,value) => events.push([key,value])};

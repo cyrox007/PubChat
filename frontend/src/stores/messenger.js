@@ -1,4 +1,5 @@
 import RealtimeService from '@/API/RealtimeService';
+import { upsertMessage, sameMessage } from '@/utils/messageIdentity.js';
 import { sendEncryptedAttachment } from '@/crypto/encryptedAttachment';
 import {
 	decryptMessageForCurrentDevice,
@@ -27,7 +28,7 @@ const clearHeartbeatTimer = () => {
 	messengerHeartbeatTimer = null;
 };
 
-const messageKey = (message) => message?.uid || message?.frontId || null;
+const messageKey = (message) => message?.frontId || message?.uid || null;
 const mediaTypes = new Set(['image', 'video', 'audio', 'voice', 'file']);
 const mediaKindForFile = (file, fallback = 'file') => {
 	if (fallback === 'voice') return 'voice';
@@ -87,19 +88,10 @@ export default {
 			if (userId && state.unreadCounts[userId]) state.unreadCounts[userId] = 0;
 		},
 		ADD_MESSAGE(state, { userId, message }) {
-			if (!state.conversations[userId]) state.conversations[userId] = [];
-			const key = messageKey(message);
-			const existingIndex = key
-				? state.conversations[userId].findIndex((item) => messageKey(item) === key)
-				: -1;
-			if (existingIndex >= 0) {
-				state.conversations[userId][existingIndex] = {
-					...state.conversations[userId][existingIndex],
-					...message,
-				};
-				return;
-			}
-			state.conversations[userId].push(message);
+            if (!state.conversations[userId]) state.conversations[userId] = [];
+            const exists = state.conversations[userId].some((item) => sameMessage(item, message));
+            state.conversations[userId] = upsertMessage(state.conversations[userId], message);
+            if (exists) return;
 			if (state.activeDialog !== userId && !message.isCurrentUser) {
 				state.unreadCounts[userId] = (state.unreadCounts[userId] || 0) + 1;
 				const shouldNotify = message.notification?.notify_in_app ?? true;
@@ -124,15 +116,10 @@ export default {
             state.notifications = state.notifications.filter((item) => item.uid !== uid);
         },
 		MERGE_CONVERSATION(state, { userId, messages }) {
-			if (!state.conversations[userId]) state.conversations[userId] = [];
-			messages.forEach((message) => {
-				const key = messageKey(message);
-				const index = key
-					? state.conversations[userId].findIndex((item) => messageKey(item) === key)
-					: -1;
-				if (index >= 0) state.conversations[userId][index] = { ...state.conversations[userId][index], ...message };
-				else state.conversations[userId].push(message);
-			});
+            if (!state.conversations[userId]) state.conversations[userId] = [];
+            for (const message of messages) {
+                state.conversations[userId] = upsertMessage(state.conversations[userId], message);
+            }
 			state.conversations[userId].sort((a, b) => {
 				const left = new Date(a.created_at || a.timestamp || 0).getTime();
 				const right = new Date(b.created_at || b.timestamp || 0).getTime();
@@ -145,6 +132,17 @@ export default {
 		CLEAR_CONVERSATION(state, userId) {
 			delete state.conversations[userId];
 		},
+        SET_PENDING_STATUS(state, { userId, frontId, status }) {
+            const messages = state.conversations[userId] || [];
+            state.conversations[userId] = messages.map((m) =>
+                m.frontId === frontId && !m.uid ? { ...m, status } : m);
+        },
+        MARK_UNCONFIRMED(state) {
+            Object.keys(state.conversations).forEach((peer) => {
+                state.conversations[peer] = state.conversations[peer].map((m) =>
+                    m.status === 'sending' && !m.uid ? { ...m, status: 'uncertain' } : m);
+            });
+        },
 		MARK_MESSAGE_AS_READ(state, messageId) {
 			Object.values(state.conversations).forEach((messages) => {
 				const message = messages.find((item) => item.uid === messageId);
@@ -260,6 +258,7 @@ export default {
                     clearConnectTimer();
                     commit('SET_SOCKET', null);
                     commit('SET_CONNECTION_STATUS', false);
+                    commit('MARK_UNCONFIRMED');
                     // Client-initiated disconnect invalidates this generation.
                     // Remote normal 1000 closure is not user intent; recover it.
                     if (event.code === 4003 || event.code === 1008) {
@@ -327,6 +326,7 @@ export default {
 						userId: otherUserId,
 						message: {
 							...decoded,
+                            status: decoded.uid ? 'sent' : undefined,
 							isCurrentUser: isFromCurrentUser,
 							timestamp: new Date(decoded.created_at || Date.now()),
 						},
@@ -416,10 +416,18 @@ export default {
 				case 'ping':
 					if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ type: 'pong' }));
 					break;
+                case 'duplicate_pending':
+                    Object.keys(state.conversations).forEach((peer) => {
+                        commit('SET_PENDING_STATUS', { userId: peer, frontId: data.frontId, status: 'uncertain' });
+                    });
+                    break;
 				case 'rate_limited':
 					commit('SET_REALTIME_NOTICE', { type: 'warning', message: 'Слишком много сообщений подряд. Попробуйте через несколько секунд.' });
 					break;
 				case 'error':
+                    if (data.frontId) Object.keys(state.conversations).forEach((peer) => {
+                        commit('SET_PENDING_STATUS', { userId: peer, frontId: data.frontId, status: 'error' });
+                    });
 					commit('SET_REALTIME_NOTICE', {
 						type: data.error_type === 'dm_not_allowed' ? 'privacy' : 'error',
 						message: data.error_type === 'dm_not_allowed'
@@ -500,10 +508,38 @@ export default {
 			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
 				throw new Error('Личные сообщения сейчас переподключаются');
 			}
-			state.socket.send(JSON.stringify({ action: 'send_message', ...messageData }));
+            const outgoing = { action: 'send_message', ...messageData };
+            commit('ADD_MESSAGE', {
+                userId: messageData.receiver_uid,
+                message: {
+                    ...messageData, uid: null, sender_uid: messageData.sender?.uid,
+                    isCurrentUser: true, created_at: new Date().toISOString(),
+                    status: 'sending', outgoing,
+                },
+            });
+            try {
+                state.socket.send(JSON.stringify(outgoing));
+            } catch (error) {
+                commit('SET_PENDING_STATUS', { userId: messageData.receiver_uid, frontId: messageData.frontId, status: 'uncertain' });
+                throw error;
+            }
 			return { encrypted: false };
 		},
 
+        retryPrivateMessage({ state, commit }, { peerUid, frontId }) {
+            const item = (state.conversations[peerUid] || []).find((m) => m.frontId === frontId && !m.uid);
+            if (!item?.outgoing) return;
+            if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') {
+                throw new Error('Диалог ещё переподключается');
+            }
+            commit('SET_PENDING_STATUS', { userId: peerUid, frontId, status: 'sending' });
+            try {
+                state.socket.send(JSON.stringify(item.outgoing));
+            } catch (error) {
+                commit('SET_PENDING_STATUS', { userId: peerUid, frontId, status: 'uncertain' });
+                throw error;
+            }
+        },
 		requestConversation({ state }, { otherUserId, requestId }) {
 			if (state.socket?.readyState !== WebSocket.OPEN || state.connectionState !== 'connected') return;
 			state.socket.send(JSON.stringify({ action: 'get_conversation', other_user_uid: otherUserId, request_id: requestId }));

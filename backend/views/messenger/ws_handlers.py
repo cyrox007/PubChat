@@ -325,13 +325,13 @@ async def handle_send_private_message(
         event_id=front_id,
     )
     if not claimed:
-        await websocket.send_json(
-            {
-                "type": "duplicate_ignored",
-                "scope": "direct_message",
-                "frontId": front_id,
-            }
-        )
+        existing = await PrivateMessage.find_by_front_id(db_session, sender_uid, receiver_uid, front_id)
+        if existing:
+            await private_manager.send_to_specific_user(websocket, existing)
+        else:
+            await websocket.send_json(
+                {"type": "duplicate_pending", "scope": "direct_message", "frontId": front_id}
+            )
         return
 
     saved_upload_urls: list[str] = []
@@ -369,11 +369,19 @@ async def handle_send_private_message(
                 "content_type": content_type,
                 "sender_uid": str(sender_uid),
                 "receiver_uid": str(receiver_uid),
+                "frontId": front_id,
                 "media_metadata": persisted_media_metadata,
             },
         )
         message_persisted = True
         formatted_message["frontId"] = front_id
+        if formatted_message.pop("_replayed", False):
+            # A collision was already committed: ACK its original uid, never
+            # publish it again as a fresh unread notification.
+            for url in saved_upload_urls:
+                remove_saved_file(url)
+            await private_manager.send_to_specific_user(websocket, formatted_message)
+            return
 
         try:
             await detect_dm_recipient_burst(
@@ -430,7 +438,11 @@ async def handle_send_private_message(
         if not message_persisted:
             for url in saved_upload_urls:
                 remove_saved_file(url)
-        await realtime_service.release_event(sender_uid, scope, front_id)
+            await realtime_service.release_event(sender_uid, scope, front_id)
+        else:
+            logger.exception("DM persisted but secondary delivery failed")
+            await private_manager.send_to_specific_user(websocket, formatted_message)
+            return
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         await websocket.send_json(
             {
@@ -443,7 +455,11 @@ async def handle_send_private_message(
         if not message_persisted:
             for url in saved_upload_urls:
                 remove_saved_file(url)
-        await realtime_service.release_event(sender_uid, scope, front_id)
+            await realtime_service.release_event(sender_uid, scope, front_id)
+        else:
+            logger.exception("DM persisted but secondary delivery failed")
+            await private_manager.send_to_specific_user(websocket, formatted_message)
+            return
         logger.exception("Ошибка отправки private message")
         await websocket.send_json(
             {
