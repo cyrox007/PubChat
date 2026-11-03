@@ -337,10 +337,17 @@ async def handle_send_private_message(
     saved_upload_urls: list[str] = []
     message_persisted = False
     try:
-        if content_type == "text" and isinstance(data.get("content"), str):
-            await inspect_plaintext_write(
-                db_session, data["content"], surface="messenger_plaintext", operation="send"
-            )
+        if isinstance(data.get("content"), str) and data["content"].strip():
+            if content_type == "text":
+                moderation_surface = "messenger_plaintext"
+            elif content_type in {"file", "image", "video", "voice", "audio"}:
+                moderation_surface = "media_caption"
+            else:
+                moderation_surface = None  # E2EE and unknown envelopes must never be inspected.
+            if moderation_surface is not None:
+                await inspect_plaintext_write(
+                    db_session, data["content"], surface=moderation_surface, operation="send"
+                )
         persisted_media_metadata, saved_upload_urls, uploaded_bytes = _persist_private_message_media(
             content_type,
             data.get("media_metadata"),

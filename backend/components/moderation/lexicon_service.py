@@ -141,7 +141,7 @@ async def inspect_plaintext_write(db: AsyncSession, text: str, *, surface: str, 
     envelopes, store message bodies, or return private policy rules to callers.
     #146 must add policy-approved enforcement separately, after full-path QA.
     """
-    if surface not in {"space_chat", "messenger_plaintext"}:
+    if surface not in {"space_chat", "messenger_plaintext", "media_caption"}:
         raise ValueError("unsupported_moderation_surface")
     if operation not in {"send", "edit", "reply", "forward"}:
         raise ValueError("unsupported_moderation_operation")

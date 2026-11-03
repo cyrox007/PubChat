@@ -183,6 +183,26 @@ class ModerationPreflightShadowTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all("operation=send" in entry for entry in logs.output))
         self.assertTrue(all("спам" not in entry for entry in logs.output))
 
+    async def test_media_caption_shadow_respects_surface_scope(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        import components.moderation.lexicon_service as service
+
+        scoped = rule("спам", "token")
+        scoped["surfaces"] = ["media_caption"]
+        state = SimpleNamespace(mode="shadow", active_revision=5)
+        revision = SimpleNamespace(rules=[scoped])
+        db = SimpleNamespace(get=AsyncMock(return_value=revision))
+        with patch.object(service, "_state", AsyncMock(return_value=state)):
+            with self.assertLogs(service.__name__, level="INFO") as captured:
+                await service.inspect_plaintext_write(
+                    db, "спам", surface="media_caption", operation="send"
+                )
+            self.assertEqual(len(captured.output), 1)
+            self.assertIn("surface=media_caption", captured.output[0])
+            self.assertNotIn("спам", captured.output[0])
+            self.assertNotIn("спам", str(db.get.call_args))
+
     async def test_off_policy_never_loads_dictionary(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock, patch
