@@ -54,6 +54,8 @@ try {
   scheduled.delete(watchdogId);
   watchdog.fn();
   assert.equal(events.at(-1)[0], 'scheduleReconnect');
+  assert.equal(state.realtimeNotice.code, 'handshake_timeout');
+  assert.equal(state.realtimeNotice.phase, 'ticket', 'a pending ticket must not look like an accepted socket');
   let lateClosed = false;
   resolveTicket({ socket: { close() { lateClosed = true; } }, ticket: 'late' });
   await pending;
@@ -75,6 +77,7 @@ try {
   assert.equal(sends, 1, 'An auth frame should be sent exactly once');
   socket.onmessage({ data: JSON.stringify({ type: 'realtime_ready' }) });
   assert.equal(state.connectionState, 'connected');
+  assert.equal(state.realtimeNotice, null, 'successful messenger handshake clears previous stall reason');
   assert.equal(scheduled.size, 0, 'Successful handshake must clear the 15s watchdog');
   socket.onclose({ code: 1000, reason: 'remote server rolling reload' });
   assert.equal(events.at(-1)[0], 'scheduleReconnect',
