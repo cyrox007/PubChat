@@ -154,11 +154,17 @@ async def authenticate_websocket(
     except asyncio.TimeoutError:
         logger.warning("Realtime ready frame timed out: target=%s", target)
         try:
-            await websocket.close(code=1013, reason="Realtime temporarily unavailable")
+            await asyncio.wait_for(
+                websocket.close(code=1013, reason="Realtime temporarily unavailable"),
+                timeout=max(0.1, config.REALTIME_SEND_TIMEOUT_SECONDS),
+            )
         except Exception:
             pass
         return None
     except WebSocketDisconnect:
         # A replaced or closed client may disappear after ticket validation.
+        return None
+    except Exception:
+        logger.exception("Realtime ready frame failed: target=%s", target)
         return None
     return user_data
