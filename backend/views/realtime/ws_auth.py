@@ -143,10 +143,10 @@ async def authenticate_websocket(
             websocket.send_json(
                 {
                     "type": "realtime_ready",
-                "protocol": 2,
-                "target": target,
-                "resource_uid": str(resource_uid) if resource_uid else None,
-                "heartbeat_seconds": config.REALTIME_HEARTBEAT_SECONDS,
+                    "protocol": 2,
+                    "target": target,
+                    "resource_uid": str(resource_uid) if resource_uid else None,
+                    "heartbeat_seconds": config.REALTIME_HEARTBEAT_SECONDS,
                 }
             ),
             timeout=max(0.1, config.REALTIME_SEND_TIMEOUT_SECONDS),
