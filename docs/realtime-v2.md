@@ -82,6 +82,14 @@ Authoritative fan-out идёт через Redis channel. Поэтому:
 - presence update распространяется между workers;
 - ограничение доступа к Space может отключить пользователя независимо от worker, на котором открыт его socket.
 
+## Диагностика зависшего WebSocket-handshake (Safari)
+
+- Браузерный watchdog ограничивает всю попытку подключения до `realtime_ready` 15 секундами и повторяет её с новым one-time ticket.
+- Ошибка `handshake_timeout` содержит **безопасный** этап `ticket` (HTTP запрос), `upgrade` (WSS handshake) либо `auth` (серверная проверка session/ticket). Эти этапы помогают сузить причину, но не доказывают её без access/error logs на сервере и reverse proxy.
+- Backend ограничивает Redis ticket consumption, DB identity verification и отправку ready frame; при временной деградации закрывает handshake кодом `1013`, чтобы браузер мог восстановиться с новым ticket.
+- Не логировать сам ticket, токены, содержимое сообщений. Для QA проверять `POST /realtime/v2/tickets` (статус/длительность), WSS upgrade (`101`), первый auth frame и `realtime_ready`; сверять `/health/ready` и реальный deployed commit каждого worker.
+- Реальное поведение iPhone Safari, конфигурацию TLS/reverse proxy и массовые обрывы нельзя считать проверенными только на основании CI.
+
 ## Reconnect и resume
 
 SPA использует connection state machine:

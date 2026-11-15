@@ -171,6 +171,7 @@ export default {
 			clearConnectTimer();
 			roomConnectionGeneration += 1;
 			const generation = roomConnectionGeneration;
+            let handshakeStage = 'ticket';
 
 			if (state.socket) {
 				try { state.socket.close(1000, 'Replacing connection'); } catch { /* noop */ }
@@ -180,7 +181,7 @@ export default {
 			commit('setIntendedRoomId', roomId);
 			commit('setConnectionStatus', false);
 			commit('setConnectionState', isReconnect ? 'reconnecting' : 'connecting');
-			commit('setRealtimeNotice', null);
+			// Keep the last failure visible until a successful realtime_ready.
 
             // Cover ticket retrieval, TCP/TLS establishment and the auth frame.
             // Invalidate this attempt before closing so a late result cannot win.
@@ -191,12 +192,20 @@ export default {
                 const stalledSocket = state.socket;
                 commit('setSocket', null);
                 commit('setConnectionStatus', false);
+                const step = handshakeStage === 'ticket' ? 'получения разрешения на подключение'
+                    : handshakeStage === 'upgrade' ? 'открытия WebSocket-канала'
+                    : 'подтверждения WebSocket-сессии';
+                commit('setRealtimeNotice', {
+                    type: 'warning', code: 'handshake_timeout', phase: handshakeStage,
+                    message: `Превышено время ${step}. Повторяем подключение автоматически.`,
+                });
                 try { stalledSocket?.close(4000, 'Connection timeout'); } catch { /* noop */ }
                 dispatch('scheduleReconnect', roomId);
             }, 15000);
 
 			try {
 				const prepared = await RealtimeService.prepareSocket('room', roomId);
+                handshakeStage = 'upgrade';
 				if (generation !== roomConnectionGeneration) {
 					prepared.socket.close(1000, 'Stale connection');
 					return;
@@ -207,6 +216,7 @@ export default {
 
 				socket.onopen = () => {
 					if (generation !== roomConnectionGeneration) return;
+					handshakeStage = 'auth';
 					commit('setConnectionState', 'authenticating');
 					const lastMessage = state.messages[state.messages.length - 1];
 					socket.send(JSON.stringify({
@@ -221,6 +231,7 @@ export default {
 					try {
 						const data = JSON.parse(event.data);
 						if (data.type === 'realtime_ready') {
+                            handshakeStage = 'ready';
 							commit('setConnectionStatus', true);
 							commit('setConnectionState', 'connected');
 							commit('setReconnectAttempt', 0);
@@ -248,6 +259,12 @@ export default {
 					commit('setSocket', null);
 					commit('setConnectionStatus', false);
                     commit('MARK_UNCONFIRMED');
+                    if (handshakeStage !== 'ready') commit('setRealtimeNotice', {
+                        type: 'warning', phase: handshakeStage, code: `ws_close_${event.code}`,
+                        message: event.code === 1013
+                            ? 'Сервер временно не готов принять соединение. Повторяем подключение.'
+                            : `WebSocket закрылся до подтверждения (код ${event.code}). Повторяем подключение.`,
+                    });
 
                     // Local disconnect/replacement already invalidated the
                     // connection generation. Remote 1000 still needs reconnect.
@@ -278,6 +295,10 @@ export default {
 					});
 					return;
 				}
+				commit('setRealtimeNotice', {
+                    type: 'warning', phase: handshakeStage, code: 'ticket_request_failed',
+                    message: 'Не удалось подготовить WebSocket-подключение. Повторяем попытку.',
+                });
 				dispatch('scheduleReconnect', roomId);
 			}
 		},

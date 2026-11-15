@@ -178,6 +178,7 @@ export default {
             clearConnectTimer();
             messengerConnectionGeneration += 1;
 			const generation = messengerConnectionGeneration;
+            let handshakeStage = 'ticket';
 
 			if (state.socket) {
 				try { state.socket.close(1000, 'Replacing connection'); } catch { /* noop */ }
@@ -195,12 +196,20 @@ export default {
                 const stalled = state.socket;
                 commit('SET_SOCKET', null);
                 commit('SET_CONNECTION_STATUS', false);
+                const step = handshakeStage === 'ticket' ? 'получения разрешения на подключение'
+                    : handshakeStage === 'upgrade' ? 'открытия WebSocket-канала'
+                    : 'подтверждения WebSocket-сессии';
+                commit('SET_REALTIME_NOTICE', {
+                    type: 'warning', code: 'handshake_timeout', phase: handshakeStage,
+                    message: `Превышено время ${step}. Повторяем подключение автоматически.`,
+                });
                 try { stalled?.close(4000, 'Connection timeout'); } catch { /* noop */ }
                 dispatch('scheduleReconnect');
             }, 15000);
 
             try {
                 const prepared = await RealtimeService.prepareSocket('messenger');
+                handshakeStage = 'upgrade';
 				if (generation !== messengerConnectionGeneration) {
 					prepared.socket.close(1000, 'Stale connection');
 					return;
@@ -211,6 +220,7 @@ export default {
 
 				socket.onopen = () => {
 					if (generation !== messengerConnectionGeneration) return;
+					handshakeStage = 'auth';
 					commit('SET_CONNECTION_STATE', 'authenticating');
 					socket.send(JSON.stringify({
 						type: 'auth',
@@ -224,6 +234,7 @@ export default {
 					try {
 						const data = JSON.parse(event.data);
 						if (data.type === 'realtime_ready') {
+                            handshakeStage = 'ready';
 							commit('SET_CONNECTION_STATUS', true);
 							commit('SET_CONNECTION_STATE', 'connected');
 							commit('SET_RECONNECT_ATTEMPT', 0);
@@ -259,6 +270,12 @@ export default {
                     commit('SET_SOCKET', null);
                     commit('SET_CONNECTION_STATUS', false);
                     commit('MARK_UNCONFIRMED');
+                    if (handshakeStage !== 'ready') commit('SET_REALTIME_NOTICE', {
+                        type: 'warning', phase: handshakeStage, code: `ws_close_${event.code}`,
+                        message: event.code === 1013
+                            ? 'Сервер временно не готов принять соединение. Повторяем подключение.'
+                            : `WebSocket закрылся до подтверждения (код ${event.code}). Повторяем подключение.`,
+                    });
                     // Client-initiated disconnect invalidates this generation.
                     // Remote normal 1000 closure is not user intent; recover it.
                     if (event.code === 4003 || event.code === 1008) {
@@ -275,6 +292,10 @@ export default {
 				console.error('Не удалось подготовить messenger realtime:', error);
                 if (generation === messengerConnectionGeneration) {
                     clearConnectTimer();
+                    commit('SET_REALTIME_NOTICE', {
+                        type: 'warning', phase: handshakeStage, code: 'ticket_request_failed',
+                        message: 'Не удалось подготовить WebSocket-подключение. Повторяем попытку.',
+                    });
                     dispatch('scheduleReconnect');
                 }
             }
