@@ -1,5 +1,12 @@
 # PubChat — история версий
 
+## Unreleased — ограничение WebSocket-handshake для iPhone Safari, 2026-11-15
+
+- Проверка одноразового realtime ticket в Redis и валидация Identity/ограничений в PostgreSQL ограничены по времени: зависший checkout из SQLAlchemy pool не удерживает авторизацию дольше браузерного watchdog.
+- Отправка серверного `realtime_ready` также ограничена по времени; зависшая инициализация завершается временным кодом WebSocket `1013`, без раскрытия ticket или персональных данных.
+- Web Space и Messenger различают зависание на этапах `ticket`, `upgrade` и `auth`, сохраняют безопасное диагностическое сообщение во время попыток переподключения и очищают его после успешного `realtime_ready`.
+- Добавлены регрессионные проверки timeout Redis, DB validation и ready-frame и проверки браузерных state machines. Требуются deployment и реальная QA iPhone Safari; причина наблюдавшегося сбоя production не подтверждена.
+
 Формат до стабильного релиза: `MAJOR.MINOR.PATCH-channel.N`.
 
 ## Unreleased — стабилизация идентичности сообщений, 2026-10-27
